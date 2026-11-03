@@ -17,6 +17,7 @@ parser.add_argument('--repo', help='Prefetch one independent repo without waitin
 args = parser.parse_args()
 patterns = ['*.safetensors', '*.json', '*.txt', '*.py', '*.model']
 specs = [
+    ('timm/vit_large_patch16_dinov3.lvd1689m', 'model', patterns, None),
     ('timm/vit_so400m_patch16_siglip_256.v2_webli', 'model', patterns, None),
     ('timm/aimv2_huge_patch14_224.apple_pt', 'model', patterns, None),
     ('Tongyi-MAI/Z-Image-Turbo', 'model', patterns, None),
