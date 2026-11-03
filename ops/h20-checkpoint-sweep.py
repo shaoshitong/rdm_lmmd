@@ -12,6 +12,7 @@ import time
 ROOT = Path('/data/shaoshitong/rdm-sets')
 parser = argparse.ArgumentParser()
 parser.add_argument('--resume-summary', type=Path)
+parser.add_argument('--only-case', type=int, nargs=2, metavar=('GROUP', 'MICRO'))
 args = parser.parse_args()
 REPO = Path(__file__).resolve().parents[1]
 STAMP = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
@@ -190,29 +191,37 @@ try:
                 state['cases'].append(reused)
     publish()
     # Requested pair checkpointing first. Every successful point also exercises probe/refresh.
-    for group, batches in [(2, [2, 4, 8, 16]), (1, [4, 8, 16]), (0, [1, 2, 4, 8, 16])]:
+    plan = [(2, [2, 4, 8, 16]), (1, [4, 8, 16]), (0, [1, 2, 4, 8, 16])]
+    if args.only_case:
+        group, micro = args.only_case
+        assert group in (0, 1, 2) and micro in (1, 2, 4, 8, 16)
+        plan = [(group, [micro])]
+    for group, batches in plan:
         for micro in batches:
             if any(x['group_size'] == group and x['micro_batch'] == micro and
                    x['status'] == 'passed' for x in state['cases']):
                 continue
-            point = run_case(group, micro, iterations=3 if (group, micro) == (2, 2) else 2)
+            point = run_case(group, micro, iterations=3 if args.only_case or (group, micro) == (2, 2) else 2)
             if point['status'] == 'oom':
                 break
-    candidates = [x for x in state['cases'] if x['status'] == 'passed']
-    if not candidates:
-        raise RuntimeError('No candidate completed the full update/probe/refresh path')
-    # Report both the capacity boundary and the fastest point; more occupied memory
-    # does not by itself imply more throughput. Reserve5% for token-length variation.
-    total_mib = min(x[2] for x in gpu_state())
-    stable = [x for x in candidates if max(x['nvml_peak_mib'].values()) <= total_mib * 0.95]
-    if not stable:
-        raise RuntimeError('No measured point leaves the required5% memory margin')
-    fastest = min(stable, key=lambda x: x['mean_seconds'])
-    winner = run_case(fastest['group_size'], fastest['micro_batch'], iterations=3, label='winner-repeat')
-    if winner['status'] != 'passed' or max(winner['nvml_peak_mib'].values()) > total_mib * 0.95:
-        raise RuntimeError('Winning configuration failed repeat/memory-margin acceptance')
-    state['winner'] = winner
-    state['status'] = 'complete'
+    if args.only_case:
+        state['status'] = 'single_case_complete'
+        state['priority_case'] = args.only_case
+    else:
+        candidates = [x for x in state['cases'] if x['status'] == 'passed']
+        if not candidates:
+            raise RuntimeError('No candidate completed the full update/probe/refresh path')
+        # Keep the measured capacity boundary as well as the repeatable speed winner.
+        total_mib = min(x[2] for x in gpu_state())
+        stable = [x for x in candidates if max(x['nvml_peak_mib'].values()) <= total_mib * 0.95]
+        if not stable:
+            raise RuntimeError('No measured point leaves the required5% memory margin')
+        fastest = min(stable, key=lambda x: x['mean_seconds'])
+        winner = run_case(fastest['group_size'], fastest['micro_batch'], iterations=3, label='winner-repeat')
+        if winner['status'] != 'passed' or max(winner['nvml_peak_mib'].values()) > total_mib * 0.95:
+            raise RuntimeError('Winning configuration failed repeat/memory-margin acceptance')
+        state['winner'] = winner
+        state['status'] = 'complete'
     publish()
 except BaseException as error:
     state['status'] = 'failed'

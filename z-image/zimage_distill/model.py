@@ -168,6 +168,10 @@ class ZImageVAE(nn.Module):
             vae = AutoencoderKL.from_pretrained(os.path.join(resolve_snapshot(repo), "vae"),
                                                 torch_dtype=dtype)
         self.vae = vae.to(device=device, dtype=dtype).requires_grad_(False).eval()
+        if any(type(module).__name__ == 'Upsample2D' for module in self.vae.modules()):
+            from .vae_upsample import install_safe_vae_upsampling
+            logger.info("[zimage] large-batch VAE nearest2D guard: %s",
+                        install_safe_vae_upsampling(self.vae))
         if gradient_checkpointing and hasattr(self.vae, "enable_gradient_checkpointing"):
             self.vae.enable_gradient_checkpointing()
         self.scaling_factor = float(self.vae.config.scaling_factor)

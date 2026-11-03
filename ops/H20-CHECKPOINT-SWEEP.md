@@ -40,3 +40,12 @@ with independent sessions. Successful earlier cases can be reused via `--resume-
 partial or failed cases are never admitted as passed. Probe/refresh values must also be finite,
 and a repeated winner must satisfy the5% margin. BF16/FP32 two-rank parity diagnostics (four
 accumulated micros, with and without shared conditioning) passed with zero gradient error.
+
+The first micro8 attempt hit Torch2.8's nearest-NHWC backward INT_MAX index limit at
+`[8,256,1024,1024]`; this was not an OOM. The VAE adapter now uses the existing NCHW
+nearest kernel for at-risk input/output element counts, forcing contiguous layout in both
+forward and backward. Smaller tensors call the original Diffusers method verbatim.
+Logical DiT/VAE batch, parameters, checkpoint keys and interpolation values are unchanged.
+CPU forward/backward/second-gradient tests and a small CUDA FP32/BF16 adapter gate run
+before the full model. `--only-case 2 16` prioritizes the user's batch16/accumulation1
+request with three updates plus probe/refresh, without declaring the whole sweep complete.

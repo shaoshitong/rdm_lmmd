@@ -25,7 +25,10 @@ assert all(int(memory) <= 32 and int(util) == 0 for memory, util in
 PY
 cd "$REPO"
 "$ROOT/envs/rdm/bin/python" -m pytest z-image/tests/test_checkpoint_groups.py \
-  z-image/tests/test_zimage_multistep.py z-image/tests/test_qwen_text_store.py -q
+  z-image/tests/test_zimage_multistep.py z-image/tests/test_qwen_text_store.py \
+  z-image/tests/test_vae_upsample.py -q
+CUDA_VISIBLE_DEVICES=4 "$ROOT/envs/rdm/bin/python" ops/h20-vae-upsampling-check.py \
+  --out "$ROOT/control/vae-upsampling-cuda-check.json"
 "$ROOT/envs/rdm/bin/torchrun" --nproc_per_node=2 --master_port=29541 \
   ops/h20-checkpoint-parity.py --out "$ROOT/control/checkpoint-fsdp-parity.json"
 "$ROOT/envs/rdm/bin/python" ops/h20-checkpoint-sweep.py "$@"
