@@ -9,7 +9,7 @@ from pathlib import Path
 import signal
 import subprocess
 import time
-from h20_benchmark_acceptance import validate_benchmark_record, is_expected_cuda_oom
+from h20_benchmark_acceptance import validate_benchmark_record, is_expected_cuda_oom, wait_for_idle_gpus
 
 ROOT = Path('/data/shaoshitong/rdm-sets')
 parser = argparse.ArgumentParser()
@@ -132,7 +132,7 @@ def run_case(group, micro, iterations=2, label=None):
     name = label or f'group{group}-micro{micro}'
     case_dir = OUT / name
     case_dir.mkdir()
-    idle = gpu_state()
+    idle = wait_for_idle_gpus(gpu_state, time.sleep, time.monotonic)
     if any(memory > 32 or utilization != 0 for _, memory, total, utilization in idle):
         raise RuntimeError(f'Selected GPU busy before {name}: {idle}')
     command = [str(ROOT / 'envs/rdm/bin/torchrun'), '--nproc_per_node=2', '--master_port=29541',

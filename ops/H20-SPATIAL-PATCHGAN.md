@@ -63,6 +63,10 @@ It subsequently checks an actual indexed teacher PNG and runs three complete
 dual-GPU student iterations plus probe/refresh. The candidate uses FA3,
 checkpoint groups of2 and microbatch2; only a verified CUDA OOM permits a
 microbatch1 fallback at the same global batch32.
+Before each GPU stage, an empty device may wait up to5 seconds for NVML's previous
+utilization sample to expire; a device with more than32 MiB allocated is still
+rejected immediately. This handles the just-finished single-image oracle without
+ignoring a live memory user.
 
 For this bounded test only, `g_start_step=0` exercises the generator GAN path
 without burning50 formal warmup steps. The saved experiment configs keep their

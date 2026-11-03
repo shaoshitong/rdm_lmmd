@@ -9,6 +9,40 @@ import re
 SPATIAL_HEADS = ('dinov3_l', 'qwen3vl_4b', 'aimv2_huge')
 
 
+def wait_for_idle_gpus(read_state, sleep_fn, clock_fn, *, timeout_seconds=5.0,
+                       interval_seconds=0.25, memory_limit_mib=32):
+    """Wait only for a low-memory NVML utilization sample to refresh.
+
+    ``read_state`` returns rows ``[gpu, memory_used_mib, total_mib, utilization]``.
+    Return the latest state unchanged; the caller still applies its idle gate.
+    Any memory above the limit returns immediately, including if it appears on a
+    later poll. Persistent nonzero utilization returns the last state at timeout.
+    No device/process mutation or occupancy bypass is performed. Callbacks own
+    their query timeouts; ``clock_fn`` must be a monotonic clock.
+    """
+    _require(isinstance(timeout_seconds, numbers.Real) and math.isfinite(timeout_seconds)
+             and 0 <= timeout_seconds <= 5.0, 'Idle refresh timeout must be between0 and5 seconds')
+    _require(isinstance(interval_seconds, numbers.Real) and math.isfinite(interval_seconds)
+             and interval_seconds > 0, 'Idle refresh interval must be positive')
+    _require(isinstance(memory_limit_mib, numbers.Real) and math.isfinite(memory_limit_mib)
+             and memory_limit_mib >= 0, 'Idle memory limit must be finite and nonnegative')
+    deadline = clock_fn() + timeout_seconds
+    while True:
+        state = read_state()
+        _require(isinstance(state, (list, tuple)) and bool(state), 'GPU state must contain selected GPU rows')
+        for row in state:
+            _require(isinstance(row, (list, tuple)) and len(row) >= 4,
+                     'GPU state rows must contain index,memory,total,utilization')
+            _require(all(isinstance(row[index], numbers.Real) and math.isfinite(row[index])
+                         and row[index] >= 0 for index in (1, 3)), 'GPU memory/utilization must be finite nonnegative numbers')
+        if any(row[1] > memory_limit_mib for row in state) or all(row[3] == 0 for row in state):
+            return state
+        remaining = deadline - clock_fn()
+        if remaining <= 0:
+            return state
+        sleep_fn(min(interval_seconds, remaining))
+
+
 def is_expected_cuda_oom(log_text, *, timed_out=False):
     """An actual traceback exception, never a timeout or incidental OOM wording."""
     if timed_out:

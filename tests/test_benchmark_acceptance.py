@@ -12,6 +12,80 @@ _helper = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_helper)
 
 
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+        self.sleeps = []
+
+    def clock(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+
+def test_low_memory_residual_utilization_waits_for_fresh_zero_sample():
+    timer = FakeClock()
+    samples = [
+        [[4, 0, 143771, 38], [5, 0, 143771, 0]],
+        [[4, 0, 143771, 11], [5, 0, 143771, 0]],
+        [[4, 0, 143771, 0], [5, 0, 143771, 0]],
+    ]
+    observed = []
+    def read():
+        sample = samples[len(observed)]
+        observed.append(sample)
+        return sample
+    result = _helper.wait_for_idle_gpus(read, timer.sleep, timer.clock)
+    assert result is samples[-1] and len(observed) == 3
+    assert timer.sleeps == [0.25, 0.25] and timer.now == 0.5
+
+
+def test_real_gpu_memory_occupancy_returns_immediately_without_sleep():
+    timer = FakeClock()
+    occupied = [[4, 33, 143771, 0], [5, 0, 143771, 0]]
+    calls = []
+    def read():
+        calls.append(True)
+        return occupied
+    result = _helper.wait_for_idle_gpus(read, timer.sleep, timer.clock)
+    assert result is occupied and len(calls) == 1
+    assert timer.sleeps == [] and timer.now == 0
+
+
+def test_persistent_low_memory_utilization_times_out_and_returns_last_nonidle_state():
+    timer = FakeClock()
+    observed = []
+    def read():
+        sample = [[4, 0, 143771, 38], [5, 0, 143771, 0]]
+        observed.append(sample)
+        return sample
+    result = _helper.wait_for_idle_gpus(read, timer.sleep, timer.clock)
+    assert result is observed[-1] and result[0][3] == 38
+    assert timer.now == 5.0 and len(observed) == 21
+    assert len(timer.sleeps) == 20 and all(seconds == 0.25 for seconds in timer.sleeps)
+
+
+def test_memory_occupancy_appearing_during_refresh_is_not_waited_away():
+    timer = FakeClock()
+    samples = [[[4, 0, 143771, 20]], [[4, 500, 143771, 20]]]
+    calls = []
+    def read():
+        sample = samples[len(calls)]
+        calls.append(sample)
+        return sample
+    result = _helper.wait_for_idle_gpus(read, timer.sleep, timer.clock)
+    assert result is samples[-1] and timer.sleeps == [0.25]
+
+
+def test_already_idle_gpu_state_returns_without_sleep():
+    timer = FakeClock()
+    idle = [[4, 32, 143771, 0], [5, 0, 143771, 0]]
+    assert _helper.wait_for_idle_gpus(lambda: idle, timer.sleep, timer.clock) is idle
+    assert timer.sleeps == []
+
+
 def record():
     iterations = []
     for iteration in range(1, 4):

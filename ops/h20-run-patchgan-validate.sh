@@ -36,10 +36,16 @@ exec 9>/data/shaoshitong/rdm-run.lock
 flock -n 9 || exit 3
 check_idle() {
   "$PYTHON" - <<'PY'
-import subprocess
-rows=subprocess.check_output(['nvidia-smi','-i','4,5','--query-gpu=memory.used,utilization.gpu',
-                              '--format=csv,noheader,nounits'],text=True)
-assert all(int(m)<=32 and int(u)==0 for m,u in (r.split(',') for r in rows.splitlines())),rows
+import subprocess, sys, time
+sys.path.insert(0, 'ops')
+from h20_benchmark_acceptance import wait_for_idle_gpus
+def read_state():
+    rows=subprocess.check_output(['nvidia-smi','-i','4,5',
+        '--query-gpu=index,memory.used,memory.total,utilization.gpu',
+        '--format=csv,noheader,nounits'],text=True,timeout=10)
+    return [list(map(int,row.split(','))) for row in rows.splitlines()]
+rows=wait_for_idle_gpus(read_state,time.sleep,time.monotonic)
+assert all(m<=32 and u==0 for _,m,total,u in rows),rows
 PY
 }
 check_idle
