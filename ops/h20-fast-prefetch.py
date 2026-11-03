@@ -4,6 +4,7 @@ HF's normal cache/file locks coordinate with the original preparation downloader
 No active transfer is stopped or overwritten; completed cache blobs are reused.
 """
 import fnmatch
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -11,6 +12,9 @@ import httpx
 import huggingface_hub as hf
 
 ROOT = Path('/data/shaoshitong/rdm-sets')
+parser = argparse.ArgumentParser()
+parser.add_argument('--repo', help='Prefetch one independent repo without waiting for another repo lock')
+args = parser.parse_args()
 patterns = ['*.safetensors', '*.json', '*.txt', '*.py', '*.model']
 specs = [
     ('timm/vit_so400m_patch16_siglip_256.v2_webli', 'model', patterns, None),
@@ -20,6 +24,9 @@ specs = [
      ['bandwidths.json', 'metadata.json', 'text_features.done.json', 'text_features.npy'],
      ROOT / 'zimage/qwen-text-download'),
 ]
+if args.repo:
+    specs = [spec for spec in specs if spec[0] == args.repo]
+    assert specs, args.repo
 # This first client uses the existing proxy to query the official source.
 api = hf.HfApi(endpoint='https://huggingface.co')
 inventories = []
@@ -48,6 +55,9 @@ for repo, kind, wanted, dest, revision, files in inventories:
         assert h.hexdigest() == (f.lfs.sha256 if f.lfs else f.blob_id), str(path)
         rows.append({'path': str(path), 'bytes': f.size, 'digest': h.hexdigest()})
     receipts.append({'repo': repo, 'revision': revision, 'files': rows})
-    (ROOT / 'control/fast-prefetch-verified.json').write_text(json.dumps(receipts, indent=2))
+    (ROOT / 'control' / ('fast-prefetch-' + repo.replace('/', '--') + '-verified.json')).write_text(
+        json.dumps(receipts[-1], indent=2))
+    if not args.repo:
+        (ROOT / 'control/fast-prefetch-verified.json').write_text(json.dumps(receipts, indent=2))
     print(json.dumps({'event': 'official_hashes_verified', 'repo': repo,
                       'bytes': sum(f.size for f in files)}), flush=True)
