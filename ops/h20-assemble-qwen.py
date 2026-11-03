@@ -1,9 +1,10 @@
 """Assemble only the tables already downloaded and hash-verified at pinned revisions."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import numpy as np
-from zimage_distill.qwen_text_store import BUILT, link_source, rows_read, stats_rows
+from zimage_distill.qwen_text_store import BUILT, LINKED, link_source, rows_read, stats_rows
 
 root = Path('/data/shaoshitong/rdm-sets')
 pack = root / 'zimage/zimage-ref-v1'
@@ -33,6 +34,17 @@ if not out.exists():
             os.link(download / name, dest)
     link_source(source, tmp)
     tmp.rename(out)
+def sha256(path):
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for block in iter(lambda: f.read(8 * 1024**2), b''):
+            h.update(block)
+    return h.hexdigest()
+for name in BUILT:
+    if not os.path.samefile(out / name, download / name):
+        assert sha256(out / name) == sha256(download / name), name
+for name in LINKED:
+    assert (out / name).resolve() == (source / name).resolve(), name
 receipt = {'store': str(out), 'text_dim': 2560, 'required_rows': len(ids),
            'required_prompts': len(checked), 'steps': 500, 'window': 128,
            'global_batch': 32, 'critic_seeds': [0, 1], 'finite_and_unit_norm': True,
