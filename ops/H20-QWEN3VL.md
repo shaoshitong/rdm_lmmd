@@ -34,3 +34,24 @@ the snapshot, digests and visual keys. It does not certify feature extraction,
 reference coverage, image preprocessing, GPU gradients or training capacity.
 An existing receipt describes its original verification time; re-running always
 revalidates cached bytes before publishing a fresh receipt.
+# Preparation and validation entries
+
+The original single-connection HF process is preserved until the independent
+`h20-run-qwen3vl-fast-prefetch.sh` completes official hashes. Its `--transport aria2`
+mode uses16 connections and an independent snapshot under
+`ROOT/models/qwen3vl-4b-vision/<revision>`; it never modifies an active HF partial.
+`h20-run-qwen3vl-teacher-prefetch.sh` downloads/hashes one2GB teacher tar without GPU
+work and retains it for the feature pilot.
+
+`h20-run-qwen3vl-validate.sh` waits for verified model weights, runs actual-environment
+CPU integration tests and a real vision/PIL-ADM/pixel-gradient gate, then extracts a
+one-tar pilot followed by the full125808-row view. It keeps the frozen fp32 encoder
+weights/BF16 autocast contract shared with training. After reference acceptance it
+tests micro16/8/4 independently, each with3 complete finite updates and probe/refresh,
+and records maximum capacity and a candidate with5% memory margin. These bounded
+updates save no weights and launch no formal A/B or evaluation.
+
+All entries retain logs plus real PID/exit receipts under `ROOT/launch-logs` and
+`ROOT/control`. Reference source hashes, per-tar commits, and partial arrays remain
+remote; metadata is published only after full coverage and readback. The Mac helper
+`ops/h20-recovery-ssh.py` backs up the workspace helper and reuses its owned socket.
