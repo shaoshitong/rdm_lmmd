@@ -24,13 +24,15 @@ ap.add_argument('--checkpoint-group-size', type=int, choices=[0, 1, 2], default=
                 help='0 disables DiT checkpointing; VAE checkpointing remains on')
 ap.add_argument('--out-dir', type=Path, default=Path('/data/shaoshitong/rdm-sets/control'))
 ap.add_argument('--probe-refresh', action='store_true')
+ap.add_argument('--config', default='z-image/configs/zimage_2step_1024_dlr1e-4_qwen.yaml')
+ap.add_argument('--reference-root', default='/data/shaoshitong/rdm-sets/zimage/zimage-ref-v1/reference_store_qwen')
 a = ap.parse_args()
 rank, world, local_rank = setup_distributed()
 assert world == 2 and 32 % (world * a.micro_batch) == 0
 setup_logging(rank=rank)
 fix_random_seeds(0)
-cfg = load_config('z-image/configs/zimage_2step_1024_dlr1e-4_qwen.yaml')
-cfg.reference_root = '/data/shaoshitong/rdm-sets/zimage/zimage-ref-v1/reference_store_qwen'
+cfg = load_config(a.config)
+cfg.reference_root = a.reference_root
 cfg.memory['micro_batch'] = a.micro_batch
 cfg.zimage['attention_backend'] = a.backend
 cfg.grad_checkpointing = a.checkpoint_group_size != 0
