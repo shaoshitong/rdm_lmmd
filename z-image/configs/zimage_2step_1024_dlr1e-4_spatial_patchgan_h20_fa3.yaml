@@ -8,7 +8,7 @@
 #
 method: sw_lmmd
 mode: zimage
-exp_name: zimage-2step-1024-dlr1e-4-spatial-patchgan
+exp_name: zimage-2step-1024-dlr1e-5-spatial-patchgan-softplus
 img_size: 1024
 grad_checkpointing: true
 
@@ -68,8 +68,8 @@ gan:
   weight: 1.5                      # per step: |g_adv,k| = 1.5 x |g_mmd,k|
   adaptive: true
   min_norm_ratio: 0.001
-  loss: hinge
-  lr: 1.0e-4
+  loss: ns                        # non-saturating softplus for both D and G
+  lr: 1.0e-5                     # latest user override; generator/MMD unchanged
   betas: [0.0, 0.99]
   hidden: 1024
   depth: 2

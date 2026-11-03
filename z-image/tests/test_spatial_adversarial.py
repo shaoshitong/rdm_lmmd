@@ -12,7 +12,7 @@ spatial = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = spatial
 spec.loader.exec_module(spatial)
 for name in ('SpatialBranchSpec', 'SpatialFeatureCritic', 'SpatialPatchHead', 'RotaryPosition2D',
-             'region_coordinates', 'patch_hinge_loss', 'patch_generator_loss',
+             'region_coordinates', 'patch_hinge_loss', 'patch_discriminator_loss', 'patch_generator_loss',
              'frozen_spatial_critic', 'spatial_discriminator_loss', 'spatial_generator_loss'):
     globals()[name] = getattr(spatial, name)
 
@@ -65,6 +65,33 @@ class SpatialAdversarialTests(unittest.TestCase):
         wrong = torch.relu(1-mixed.mean()) + torch.relu(1+mixed.mean())
         self.assertNotEqual(loss.item(), wrong.item())
 
+    def test_ns_softplus_matches_scalar_loss_and_gradient_after64_region_repeat(self):
+        real = torch.tensor([[-30.0], [0.2], [30.0]], dtype=torch.float64, requires_grad=True)
+        fake = torch.tensor([[30.0], [-0.4], [-30.0]], dtype=torch.float64, requires_grad=True)
+        rp = real[:, None].expand(-1, 64, -1)
+        fp = fake[:, None].expand(-1, 64, -1)
+        d = patch_discriminator_loss(rp, fp, kind='ns')
+        g = patch_generator_loss(fp, kind='ns')
+        expected_d = torch.nn.functional.softplus(-real).mean() + torch.nn.functional.softplus(fake).mean()
+        expected_g = torch.nn.functional.softplus(-fake).mean()
+        torch.testing.assert_close(d, expected_d)
+        torch.testing.assert_close(g, expected_g)
+        actual_grad = torch.autograd.grad(d + 1.7 * g, (real, fake), retain_graph=True)
+        expected_grad = torch.autograd.grad(expected_d + 1.7 * expected_g, (real, fake))
+        for actual, expected in zip(actual_grad, expected_grad):
+            torch.testing.assert_close(actual, expected)
+            self.assertTrue(torch.isfinite(actual).all())
+        mixed = torch.tensor([-3., 3.], dtype=torch.float64).repeat(32).reshape(1, 64, 1)
+        correct = patch_generator_loss(mixed, kind='ns')
+        self.assertGreater(correct.item(), torch.nn.functional.softplus(-mixed.mean()).item())
+
+    def test_unknown_patch_loss_is_rejected(self):
+        logits = torch.zeros(1, 64, 1)
+        with self.assertRaisesRegex(ValueError, 'unknown adversarial loss'):
+            patch_discriminator_loss(logits, logits, kind='other')
+        with self.assertRaisesRegex(ValueError, 'unknown adversarial loss'):
+            patch_generator_loss(logits, kind='other')
+
     def test_no_cross_image_attention(self):
         critic = self.critic().eval(); phi = self.inputs(); text = torch.randn(2, 9)
         together = critic(phi, text)
@@ -95,7 +122,7 @@ class SpatialAdversarialTests(unittest.TestCase):
     def test_discriminator_detaches_encoder_and_updates_aggregator_and_f(self):
         critic = self.critic(); real, fake = self.inputs(requires_grad=True), self.inputs(requires_grad=True)
         text = torch.randn(2, 9, requires_grad=True)
-        losses = spatial_discriminator_loss(critic, real, fake, text)
+        losses = spatial_discriminator_loss(critic, real, fake, text, kind='ns')
         sum(losses.values()).backward()
         for tensor in [*real.values(), *fake.values(), text]:
             self.assertIsNone(tensor.grad)
@@ -106,7 +133,7 @@ class SpatialAdversarialTests(unittest.TestCase):
     def test_generator_preserves_fake_gradient_without_critic_grads_or_sn_mutation(self):
         critic = self.critic(spectral_norm=True).train(); fake = self.inputs(requires_grad=True)
         before = {n: x.detach().clone() for n, x in critic.named_buffers()}
-        losses = spatial_generator_loss(critic, fake, torch.randn(2, 9))
+        losses = spatial_generator_loss(critic, fake, torch.randn(2, 9), kind='ns')
         sum(losses.values()).backward()
         self.assertTrue(critic.training)
         self.assertTrue(all(p.requires_grad for p in critic.parameters()))

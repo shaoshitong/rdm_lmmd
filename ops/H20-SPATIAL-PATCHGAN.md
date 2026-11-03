@@ -1,5 +1,14 @@
 # H20 spatial PatchGAN
 
+Latest user overrides (2026-11-03): use non-saturating softplus for all GAN heads,
+D learning rate1e-5 and G base learning rate2.83e-6. Keep the original MMD,
+encoder/step/GAN weights,100-step warmup and cosine schedule. Formal A runs500
+steps; every50 steps atomically replace the latest resume state, with a separate
+student weights file at500. The resume state includes model, cache, cursor and
+both critics/critic optimizers; the existing FSDP generator optimizer is not
+serialized by this launcher. Training uses the configured G-GAN start at50,
+unlike the earlier bounded test's explicit start-at0 override.
+
 Implements the Qwen3-VL / DINOv3 spatial PatchGAN Page specification
 `page_3bd51524f3008191b740abb3cea05cd3`, including the requested concatenation
 of the existing 2560-dimensional Qwen3-4B caption feature into each region.
@@ -14,14 +23,18 @@ without CLS/register tokens, as `B×1024×64×64`.
 Each branch has a trainable nonoverlapping convolution (Qwen kernel/stride4,
 DINO kernel/stride8), producing an 8×8 region grid. Its shared regional critic
 concatenates the broadcast caption feature, applies bidirectional attention with
-2D row/column RoPE, and returns 64 raw logits per image. Hinge losses average
-over batch and region together, without an additional division by64 or2.
+2D row/column RoPE, and returns 64 raw logits per image. The current softplus
+losses are `mean(softplus(-real))+mean(softplus(fake))` for D and
+`mean(softplus(-fake))` for G, averaged over batch and region together without an
+additional division by64 or2. The original Page's hinge remains available as a
+compatible helper, but the latest experiment configs explicitly select `ns`.
 The original encoder1/3 and generation-step weights still apply.
 
 The old global DINO/SigLIP/AIM MMD definitions, global reference features and
 ADM512 preprocessing remain separate. The original AIM global GAN is retained.
-Learning rates, schedule, GAN coefficient, adaptive coefficient formula, step
-weights, global batch32 and checkpoint intervals stay in the saved config.
+Apart from the explicitly changed D rate/objective, the schedule, GAN
+coefficient, adaptive coefficient formula, step weights, global batch32 and
+checkpoint intervals stay in the saved config.
 Adaptive gradient norms use decoded pixels as the common space for the global
 MMD and spatial GAN. Two-level pixel GradCache replays encoders and generator
 separately; frozen encoder weights still transmit image gradients. D updates
@@ -75,6 +88,22 @@ step, no D/G skips, all three heads' D/G losses, finite positive D/G gradient
 norms and per-step pixel adversarial norms. Timings exclude the first update
 when reporting steady throughput. Logs retain per-rank CUDA allocation/reservation
 and the controller records both cards' NVML peaks. Probe/refresh is checked too.
+
+For interpreting logs, D losses/logits are from the pre-update window and G
+losses/logits from post-update active rows. They are labeled by `gan/d_phase`
+and `gan/g_phase`. Softplus G loss is not minus the mean fake logit: `g_fake`
+is measured directly. `loss_g_adv_raw`, `pixel_adv_lambda` and
+`loss_g_adv_weighted` distinguish the reported raw loss from its contribution.
+`ops/h20-spatial-critic-diagnose.py` compares hinge/1e-4, softplus/1e-4 and
+softplus/1e-5 with identical fixed real/fake features and initial D state.
+It performs no generator updates, bootstrap, formal training or checkpointing.
+
+`ops/h20-run-spatial-a.sh` is the formal A entry. It keeps the existing remote
+environment and GPU4/5 lock, checks fresh output/cache paths, and appends stdout
+and stderr to `launch-logs/spatial-A-500.log` with a real exit-code receipt in
+`control/spatial-A-500.exit`. It never starts B or evaluation. Its config filename
+retains the historical `dlr1e-4` name; the actual pinned D rate is1e-5 and the
+output experiment is `zimage-2step-1024-dlr1e-5-spatial-patchgan-softplus`.
 
 Final completion requires the full image manifest, actual-PNG GPU receipt,
 three valid full iterations and probe/refresh, a current-source

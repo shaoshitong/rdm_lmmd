@@ -91,7 +91,7 @@ class SpatialRuntimeTests(unittest.TestCase):
         for name, value in whole.critic.state_dict().items():
             torch.testing.assert_close(value, chunks.critic.state_dict()[name], atol=2e-9, rtol=1e-8)
         for name in full_logs:
-            if isinstance(full_logs[name], bool): self.assertEqual(full_logs[name], chunk_logs[name])
+            if isinstance(full_logs[name], (bool, str)): self.assertEqual(full_logs[name], chunk_logs[name])
             else: self.assertAlmostEqual(full_logs[name], chunk_logs[name], places=10)
         self.assertAlmostEqual(full_logs['gan/d_loss'], sum(full_logs[f'gan/{n}/d_loss']
                                                          for n in whole.names) / 3, places=12)
@@ -220,6 +220,51 @@ class SpatialRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'R1'): self.runtime(2)
         self.cfg.r1_gamma = 0.0; self.cfg.critic = 'block'
         with self.assertRaisesRegex(ValueError, 'row'): self.runtime(2)
+
+    def test_ns_all_three_heads_match_softplus_objective_gradients_and_raw_logit_logs(self):
+        self.cfg.loss = 'ns'; self.cfg.lr = 1e-5
+        whole, chunks = self.runtime(5), self.runtime(2)
+        values = self.inputs(requires_grad=True)
+        fake, real, fake_g, real_g, tau = values
+        expected_d = {}
+        original_step = whole.optimizer.step
+        def checked_step():
+            # Same features and same SN vectors, before the actual optimizer step.
+            with module.frozen_spatial_critic(whole.critic):
+                logits = whole._score({n: torch.cat((real[n], fake[n])).detach() for n in whole.spatial_names},
+                    {'aimv2_huge': torch.cat((real_g['aimv2_huge'][:, :6], fake_g['aimv2_huge'][:, :6])).detach()},
+                    torch.cat((tau, tau)).detach())
+            for name, output in logits.items():
+                expected_d[name] = (F.softplus(-output[:5]).mean() + F.softplus(output[5:]).mean()).item()
+            return original_step()
+        whole.optimizer.step = checked_step
+        full_logs, chunk_logs = whole.update(*values), chunks.update(*values)
+        for name in whole.names:
+            self.assertAlmostEqual(full_logs[f'gan/{name}/d_loss'], expected_d[name], places=12)
+            self.assertAlmostEqual(full_logs[f'gan/{name}/d_loss'], chunk_logs[f'gan/{name}/d_loss'], places=12)
+        for name, value in whole.critic.state_dict().items():
+            torch.testing.assert_close(value, chunks.critic.state_dict()[name], atol=2e-9, rtol=1e-8)
+        with module.frozen_spatial_critic(whole.critic):
+            logits = whole._score(fake, {'aimv2_huge': fake_g['aimv2_huge'][:, :6]}, tau.detach())
+        expected = sum(F.softplus(-output).mean() for output in logits.values()) / 3
+        loss, logs = whole.generator_loss(fake, fake_g, tau)
+        torch.testing.assert_close(loss, expected)
+        image_inputs = tuple(fake.values()) + (fake_g['aimv2_huge'],)
+        expected_grads = torch.autograd.grad(expected, image_inputs)
+        actual_grads = torch.autograd.grad(loss, image_inputs)
+        for actual, oracle in zip(actual_grads, expected_grads):
+            torch.testing.assert_close(actual, oracle, atol=2e-12, rtol=1e-9)
+            self.assertTrue(torch.isfinite(actual).all()); self.assertGreater(actual.abs().sum().item(), 0)
+        self.assertTrue(all(p.grad is None for p in whole.critic.parameters()))
+        self.assertIsNone(tau.grad)
+        self.assertAlmostEqual(logs['gan/g_fake'], sum(v.mean().item() for v in logits.values()) / 3, places=12)
+        self.assertNotAlmostEqual(logs['gan/g_fake'], -logs['gan/g_loss'], places=6)
+        for name in whole.names:
+            self.assertAlmostEqual(logs[f'gan/{name}/g_fake'], logits[name].mean().item(), places=12)
+        self.assertEqual(whole.contract['loss'], 'ns')
+        self.cfg.loss = 'hinge'
+        with self.assertRaisesRegex(ValueError, 'contract'):
+            self.runtime(2).load_state_dict(whole.state_dict())
 
 
 if __name__ == '__main__':

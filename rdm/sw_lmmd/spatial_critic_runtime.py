@@ -17,7 +17,7 @@ from .adversarial import build_critic, critic_loss, adversarial_loss
 from .sharding import all_reduce_mean_
 from .spatial_adversarial import (
     DEFAULT_SPATIAL_BRANCHES, SpatialFeatureCritic,
-    frozen_spatial_critic, patch_hinge_loss, patch_generator_loss,
+    frozen_spatial_critic, patch_discriminator_loss, patch_generator_loss,
 )
 
 
@@ -39,8 +39,8 @@ class SpatialGANRuntime:
         cfg.validate()
         if cfg.r1_gamma != 0:
             raise ValueError('SpatialGANRuntime does not implement R1; require r1_gamma=0')
-        if cfg.loss != 'hinge' or cfg.critic != 'row':
-            raise ValueError('SpatialGANRuntime currently requires hinge loss and row global critic')
+        if cfg.loss not in ('hinge', 'ns') or cfg.critic != 'row':
+            raise ValueError('SpatialGANRuntime requires hinge/ns loss and row global critic')
         if not isinstance(critic_micro_batch, int) or critic_micro_batch <= 0:
             raise ValueError('critic_micro_batch must be a positive integer')
         self.cfg, self.device, self.dtype = cfg, torch.device(device), dtype
@@ -104,7 +104,7 @@ class SpatialGANRuntime:
                          'spatial_options': options, 'global': self.global_names,
                          'seed': self.seed, 'encoder_weight': self.encoder_weight,
                          'global_conditional': bool(cfg.conditional),
-                         'lr': float(cfg.lr), 'betas': list(cfg.betas)}
+                         'loss': cfg.loss, 'lr': float(cfg.lr), 'betas': list(cfg.betas)}
 
     @property
     def conditional(self):
@@ -191,7 +191,7 @@ class SpatialGANRuntime:
                 losses = {}
                 for name, values in logits.items():
                     real_l, fake_l = values[:size], values[size:]
-                    loss = patch_hinge_loss(real_l, fake_l) if name in self.spatial_names \
+                    loss = patch_discriminator_loss(real_l, fake_l, kind=self.cfg.loss) if name in self.spatial_names \
                            else critic_loss(real_l, fake_l, self.cfg.loss)
                     losses[name] = loss
                     with torch.no_grad():
@@ -215,26 +215,35 @@ class SpatialGANRuntime:
                 'gan/d_acc': sum(v[3] for v in values) * self.encoder_weight,
                 'gan/d_skipped': not finite, 'gan/d_updates': self.updates,
                 **self._last_d_grad_norms}
+        logs['gan/d_phase'] = 'pre_update_window'
         for name, entry in zip(self.names, values):
             logs[f'gan/{name}/d_loss'], logs[f'gan/{name}/d_acc'] = entry[0], entry[3]
+            logs[f'gan/{name}/d_real'] = entry[1]
+            logs[f'gan/{name}/d_fake'] = entry[2]
         return logs
 
     def generator_loss(self, spatial, global_feats, tau):
         rows = self._rows(spatial, global_feats, tau)
         losses = {name: None for name in self.names}
+        fake_means = {name: 0.0 for name in self.names}
         with frozen_spatial_critic(self.critic):
             for lo in range(0, rows, self.critic_micro_batch):
                 hi = min(rows, lo + self.critic_micro_batch)
                 space, glob, text = self._chunk(spatial, global_feats, tau, lo, hi, detach=False)
                 logits = self._score(space, glob, text)
                 for name, values in logits.items():
-                    value = patch_generator_loss(values) if name in self.spatial_names \
+                    value = patch_generator_loss(values, kind=self.cfg.loss) if name in self.spatial_names \
                             else adversarial_loss(values, self.cfg.loss)
-                    value = value * ((hi - lo) / rows)
+                    fraction = (hi - lo) / rows
+                    fake_means[name] += float(values.detach().mean()) * fraction
+                    value = value * fraction
                     losses[name] = value if losses[name] is None else losses[name] + value
         total = sum(losses.values()) * self.encoder_weight
         logs = {f'gan/{name}/g_loss': float(value.detach()) for name, value in losses.items()}
-        logs.update({'gan/g_loss': float(total.detach()), 'gan/g_fake': -float(total.detach())})
+        logs.update({f'gan/{name}/g_fake': value for name, value in fake_means.items()})
+        logs.update({'gan/g_loss': float(total.detach()),
+                     'gan/g_fake': sum(fake_means.values()) * self.encoder_weight,
+                     'gan/g_phase': 'post_update_active'})
         return total, logs
 
     def state_dict(self):

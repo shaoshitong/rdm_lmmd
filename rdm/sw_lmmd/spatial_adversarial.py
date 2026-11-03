@@ -207,13 +207,26 @@ def _validate_patch_logits(logits):
 
 def patch_hinge_loss(real_logits, fake_logits):
     """Mean each hinge over batch+regions, then add real/fake; no extra scaling."""
+    return patch_discriminator_loss(real_logits, fake_logits, kind='hinge')
+
+
+def patch_discriminator_loss(real_logits, fake_logits, *, kind='hinge'):
+    """Mean each real/fake term over batch+regions, with no extra64 scaling."""
     _validate_patch_logits(real_logits); _validate_patch_logits(fake_logits)
-    return F.relu(1.0 - real_logits).mean() + F.relu(1.0 + fake_logits).mean()
+    if kind == 'hinge':
+        return F.relu(1.0 - real_logits).mean() + F.relu(1.0 + fake_logits).mean()
+    if kind == 'ns':
+        return F.softplus(-real_logits).mean() + F.softplus(fake_logits).mean()
+    raise ValueError(f'unknown adversarial loss {kind!r}')
 
 
-def patch_generator_loss(fake_logits):
+def patch_generator_loss(fake_logits, *, kind='hinge'):
     _validate_patch_logits(fake_logits)
-    return -fake_logits.mean()
+    if kind == 'hinge':
+        return -fake_logits.mean()
+    if kind == 'ns':
+        return F.softplus(-fake_logits).mean()
+    raise ValueError(f'unknown adversarial loss {kind!r}')
 
 
 @contextmanager
@@ -233,15 +246,15 @@ def frozen_spatial_critic(critic):
             module.training = training
 
 
-def spatial_discriminator_loss(critic, real_features, fake_features, text):
+def spatial_discriminator_loss(critic, real_features, fake_features, text, *, kind='hinge'):
     """Detached encoder/text inputs; returned per-branch losses train all disc layers."""
     real = critic({n: real_features[n].detach() for n in critic.names}, text.detach())
     fake = critic({n: fake_features[n].detach() for n in critic.names}, text.detach())
-    return {n: patch_hinge_loss(real[n], fake[n]) for n in critic.names}
+    return {n: patch_discriminator_loss(real[n], fake[n], kind=kind) for n in critic.names}
 
 
-def spatial_generator_loss(critic, fake_features, text):
+def spatial_generator_loss(critic, fake_features, text, *, kind='hinge'):
     """Fresh G forward through frozen disc, preserving gradients to fake feature maps."""
     with frozen_spatial_critic(critic):
         logits = critic(fake_features, text.detach())
-    return {n: patch_generator_loss(logits[n]) for n in critic.names}
+    return {n: patch_generator_loss(logits[n], kind=kind) for n in critic.names}

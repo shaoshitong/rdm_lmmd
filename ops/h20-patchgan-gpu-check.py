@@ -53,6 +53,7 @@ def arguments(argv=None):
     parser.add_argument("--critic-hidden", type=int, default=1024)
     parser.add_argument("--critic-depth", type=int, default=2)
     parser.add_argument("--critic-heads", type=int, default=8)
+    parser.add_argument("--loss", choices=("hinge", "ns"), default="hinge")
     parser.add_argument("--attention-backend", default="sdpa")
     parser.add_argument("--seed", type=int, default=3407)
     parser.add_argument("--max-initial-used-mib", type=int, default=1024)
@@ -102,7 +103,7 @@ def main(argv=None):
               "formal_training_iteration": False, "started_epoch": time.time(), "gates": {},
               "script_sha256": sha256(__file__), "critic_options": {"hidden": args.critic_hidden,
               "depth": args.critic_depth, "heads": args.critic_heads, "spectral_norm": True},
-              "actual_hidden1024": args.critic_hidden == 1024}
+              "actual_hidden1024": args.critic_hidden == 1024, "loss_kind": args.loss}
     atomic_json = None
     started = time.monotonic()
     try:
@@ -112,6 +113,7 @@ def main(argv=None):
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
         os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
         import torch
+        import torch.nn.functional as F
         from rdm.sw_lmmd.reference_images import atomic_json, ReferenceImageStore
         from zimage_distill.model import reference_pixels
         from rdm.representation.backbones.qwen3_vl_spatial import (
@@ -269,16 +271,20 @@ def main(argv=None):
         real_leaves = {name: value.detach().clone().requires_grad_() for name, value in baseline.items()}
         fake_leaves = {name: (-value).detach().requires_grad_() for name, value in baseline.items()}
         critic.train()
-        d_losses = spatial_discriminator_loss(critic, real_leaves, fake_leaves, tau)
+        d_losses = spatial_discriminator_loss(critic, real_leaves, fake_leaves, tau, kind=args.loss)
         for hook in hooks:
             hook.remove()
         d_report = {}
         for name, loss in d_losses.items():
             real_logit, fake_logit = records[name]
             require(tuple(real_logit.shape) == (1, 64, 1) and tuple(fake_logit.shape) == (1, 64, 1), "critic output must be B64x1")
-            reference = torch.relu(1-real_logit).mean() + torch.relu(1+fake_logit).mean()
-            require(torch.equal(loss, reference) and bool(torch.isfinite(loss)), "per-region D hinge reduction mismatch")
-            d_report[name] = {"loss": float(loss.detach()), "logit_shape": list(real_logit.shape)}
+            reference = (torch.relu(1-real_logit).mean() + torch.relu(1+fake_logit).mean()
+                         if args.loss == "hinge" else
+                         F.softplus(-real_logit).mean() + F.softplus(fake_logit).mean())
+            require(torch.equal(loss, reference) and bool(torch.isfinite(loss)),
+                    f"per-region D {args.loss} reduction mismatch")
+            d_report[name] = {"loss": float(loss.detach()), "loss_kind": args.loss,
+                              "logit_shape": list(real_logit.shape)}
         sum(d_losses.values()).backward()
         require(all(value.grad is None for value in (*real_leaves.values(), *fake_leaves.values())) and tau.grad is None,
                 "D phase leaked gradients through detached encoder/text features")
@@ -289,7 +295,7 @@ def main(argv=None):
                 regions = head.aggregate(baseline[name])
             require(tuple(regions.shape) == (1, 64, args.critic_hidden), "learned aggregation must produce B64xD")
             d_report[name]["region_shape"] = list(regions.shape)
-        report["gates"]["D"] = {"branches": d_report, "input_gradients_detached": True,
+        report["gates"]["D"] = {"branches": d_report, "loss_kind": args.loss, "input_gradients_detached": True,
                                     "synthetic_fake_feature_pair": "negative baseline; routing oracle only"}
         critic.zero_grad(set_to_none=True)
         del d_losses, records, real_leaves, fake_leaves
@@ -319,8 +325,11 @@ def main(argv=None):
             try:
                 maps = dict(baseline)
                 maps[name] = boundary
-                g_losses = spatial_generator_loss(critic, maps, tau)
-                require(observed and torch.equal(g_losses[name], -logits[name].mean()), "G loss is not the Bx64 logit mean")
+                g_losses = spatial_generator_loss(critic, maps, tau, kind=args.loss)
+                reference = (-logits[name].mean() if args.loss == "hinge" else
+                             F.softplus(-logits[name]).mean())
+                require(observed and torch.equal(g_losses[name], reference),
+                        f"G {args.loss} loss is not the per-region Bx64 mean")
                 g_losses[name].backward()
             finally:
                 pre.remove()
@@ -331,7 +340,7 @@ def main(argv=None):
             require(all(torch.equal(buffer, buffers[key]) for key, buffer in critic.named_buffers()), "G changed critic buffers")
             require(all(p.grad is None and not p.requires_grad for encoder in encoders.values() for p in encoder.parameters()),
                     "frozen encoder accumulated parameter gradients")
-            report["gates"]["G"][name] = {"loss": float(g_losses[name].detach()),
+            report["gates"]["G"][name] = {"loss": float(g_losses[name].detach()), "loss_kind": args.loss,
                 "pixel_gradient": gradient_summary(torch, generated.grad), "spatial_shape": list(value.shape),
                 "gradient_leaf": "exact PNG-forward FP32 values; quantizer identity STE checked separately",
                 "raw_no_grad_grad_max_difference": float((value.detach().float()-raw_baseline[name].float()).abs().max()),

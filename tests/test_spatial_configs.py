@@ -1,4 +1,4 @@
-"""Spatial GAN changes architecture only; preserve every original training setting."""
+"""Preserve original settings except explicit spatial architecture/loss/D-LR changes."""
 import copy
 from pathlib import Path
 
@@ -28,6 +28,10 @@ def _unchanged_settings(config):
     for key in ('exp_name', 'output_dir', 'reference_root', 'spatial_gan'):
         value.pop(key, None)
     value['zimage'].pop('checkpoint_group_size', None)
+    # Latest user authorization changes only the GAN objective and D learning rate.
+    # Pin their exact new values below; retain every other GAN and MMD setting.
+    value['gan'].pop('loss', None)
+    value['gan'].pop('lr', None)
     return value
 
 
@@ -46,7 +50,7 @@ def _differences(expected, actual, path=''):
 
 
 @pytest.mark.parametrize('variant,step_weights', VARIANTS)
-def test_only_paths_checkpoint_group_and_new_spatial_block_change(variant, step_weights):
+def test_only_paths_checkpoint_group_spatial_block_and_user_gan_overrides_change(variant, step_weights):
     original, spatial = _read(variant, False), _read(variant, True)
     expected, actual = _unchanged_settings(original), _unchanged_settings(spatial)
     assert actual == expected, f'Unauthorized setting changes: {_differences(expected, actual)}'
@@ -69,7 +73,8 @@ def test_lr_gan_window_batch_and_resume_contract_remain_pinned(variant, _weights
         assert config['lr'] == pytest.approx(2.83e-6)
         assert config['lr_schedule'] == {'name': 'cosine', 'warmup_steps': 100,
                                          'min_lr_ratio': 0.1, 'total_steps': None}
-        assert config['gan']['lr'] == pytest.approx(1.0e-4)
+        assert config['gan']['lr'] == pytest.approx(1.0e-5 if spatial else 1.0e-4)
+        assert config['gan']['loss'] == ('ns' if spatial else 'hinge')
         assert config['gan']['weight'] == 1.5 and config['gan']['adaptive'] is True
         assert config['gan']['g_start_step'] == 50
         assert config['gan']['betas'] == [0.0, 0.99]

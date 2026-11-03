@@ -50,6 +50,7 @@ PY
 }
 check_idle
 CUDA_VISIBLE_DEVICES=4 "$PYTHON" ops/h20-patchgan-gpu-check.py --root "$ROOT" \
+  --loss ns \
   --output "$ROOT/control/patchgan-gpu-check.json"
 flock -u 9
 
@@ -70,6 +71,7 @@ PY
 flock -n 9 || exit 3
 check_idle
 CUDA_VISIBLE_DEVICES=4 "$PYTHON" ops/h20-patchgan-gpu-check.py --root "$ROOT" \
+  --loss ns \
   --image-manifest "$IMAGES" --image-row 0 --text-row 0 \
   --output "$ROOT/control/patchgan-real-png-gpu-check.json"
 export CUDA_VISIBLE_DEVICES=4,5

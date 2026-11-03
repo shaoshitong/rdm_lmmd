@@ -264,6 +264,10 @@ def pixel_gradcache_backward(chunk_inputs, generate_fn, encode_images_fn, loss_t
         logs[f"s{k}/pixel_mmd_grad_norm"] = mmd_norm
         logs[f"s{k}/pixel_adv_grad_norm"] = adv_norm
         logs[f"s{k}/pixel_adv_lambda"] = weight
+        logs[f"s{k}/gan/g_active"] = has_adv[k]
+        logs[f"s{k}/loss_mmd_force"] = values[k][0]
+        logs[f"s{k}/loss_g_adv_raw"] = values[k][1]
+        logs[f"s{k}/loss_g_adv_weighted"] = weight * values[k][1]
         loss_float += values[k][0] + weight * values[k][1]
 
     # Phase 3: generator-only replay; pixel cotangents replace the encoder graph.
