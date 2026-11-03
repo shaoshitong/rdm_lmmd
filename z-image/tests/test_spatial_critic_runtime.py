@@ -226,7 +226,7 @@ class SpatialRuntimeTests(unittest.TestCase):
         whole, chunks = self.runtime(5), self.runtime(2)
         values = self.inputs(requires_grad=True)
         fake, real, fake_g, real_g, tau = values
-        expected_d = {}
+        expected_d, expected_proxy = {}, {}
         original_step = whole.optimizer.step
         def checked_step():
             # Same features and same SN vectors, before the actual optimizer step.
@@ -236,11 +236,13 @@ class SpatialRuntimeTests(unittest.TestCase):
                     torch.cat((tau, tau)).detach())
             for name, output in logits.items():
                 expected_d[name] = (F.softplus(-output[:5]).mean() + F.softplus(output[5:]).mean()).item()
+                expected_proxy[name] = F.softplus(-output[5:]).mean().item()
             return original_step()
         whole.optimizer.step = checked_step
         full_logs, chunk_logs = whole.update(*values), chunks.update(*values)
         for name in whole.names:
             self.assertAlmostEqual(full_logs[f'gan/{name}/d_loss'], expected_d[name], places=12)
+            self.assertAlmostEqual(full_logs[f'gan/{name}/g_proxy_pre_d_window'], expected_proxy[name], places=12)
             self.assertAlmostEqual(full_logs[f'gan/{name}/d_loss'], chunk_logs[f'gan/{name}/d_loss'], places=12)
         for name, value in whole.critic.state_dict().items():
             torch.testing.assert_close(value, chunks.critic.state_dict()[name], atol=2e-9, rtol=1e-8)

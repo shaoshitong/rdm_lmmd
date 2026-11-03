@@ -14,7 +14,7 @@ import torch
 from torch import nn
 
 from .adversarial import build_critic, critic_loss, adversarial_loss
-from .sharding import all_reduce_mean_
+from .sharding import all_reduce_mean_, get_world_size
 from .spatial_adversarial import (
     DEFAULT_SPATIAL_BRANCHES, SpatialFeatureCritic,
     frozen_spatial_critic, patch_discriminator_loss, patch_generator_loss,
@@ -173,7 +173,7 @@ class SpatialGANRuntime:
         rows = self._rows(fake_spatial, fake_global, tau)
         if self._rows(real_spatial, real_global, tau) != rows:
             raise ValueError('D update requires matched real/fake window rows')
-        metrics = {name: torch.zeros(4, device=self.device, dtype=torch.float64) for name in self.names}
+        metrics = {name: torch.zeros(5, device=self.device, dtype=torch.float64) for name in self.names}
         self.optimizer.zero_grad(set_to_none=True)
         self.critic.train()
         try:
@@ -196,8 +196,13 @@ class SpatialGANRuntime:
                     losses[name] = loss
                     with torch.no_grad():
                         accuracy = ((real_l > 0).double().mean() + (fake_l < 0).double().mean()) / 2
+                        # Paired pre-update diagnostic, from these same logits;
+                        # this is NOT the actual post-update active-row G loss.
+                        proxy = patch_generator_loss(fake_l, kind=self.cfg.loss) if name in self.spatial_names \
+                                else adversarial_loss(fake_l, self.cfg.loss)
                         metrics[name] += torch.stack((loss.detach().double(), real_l.detach().double().mean(),
-                                                     fake_l.detach().double().mean(), accuracy)) * fraction
+                                                     fake_l.detach().double().mean(), accuracy,
+                                                     proxy.detach().double())) * fraction
                 loss = sum(losses.values()) * self.encoder_weight * fraction
                 loss.backward()
             finite = self._reduce_grads()
@@ -208,18 +213,20 @@ class SpatialGANRuntime:
             self.critic.eval()
         vector = torch.cat([metrics[name] for name in self.names])
         all_reduce_mean_(vector)  # Metrics only; no further parameter-gradient scaling.
-        values = vector.reshape(len(self.names), 4).tolist()
+        values = vector.reshape(len(self.names), 5).tolist()
         logs = {'gan/d_loss': sum(v[0] for v in values) * self.encoder_weight,
                 'gan/d_real': sum(v[1] for v in values) * self.encoder_weight,
                 'gan/d_fake': sum(v[2] for v in values) * self.encoder_weight,
                 'gan/d_acc': sum(v[3] for v in values) * self.encoder_weight,
                 'gan/d_skipped': not finite, 'gan/d_updates': self.updates,
+                'gan/d_lr': float(self.optimizer.param_groups[0]['lr']),
                 **self._last_d_grad_norms}
         logs['gan/d_phase'] = 'pre_update_window'
         for name, entry in zip(self.names, values):
             logs[f'gan/{name}/d_loss'], logs[f'gan/{name}/d_acc'] = entry[0], entry[3]
             logs[f'gan/{name}/d_real'] = entry[1]
             logs[f'gan/{name}/d_fake'] = entry[2]
+            logs[f'gan/{name}/g_proxy_pre_d_window'] = entry[4]
         return logs
 
     def generator_loss(self, spatial, global_feats, tau):
@@ -239,10 +246,21 @@ class SpatialGANRuntime:
                     value = value * fraction
                     losses[name] = value if losses[name] is None else losses[name] + value
         total = sum(losses.values()) * self.encoder_weight
-        logs = {f'gan/{name}/g_loss': float(value.detach()) for name, value in losses.items()}
-        logs.update({f'gan/{name}/g_fake': value for name, value in fake_means.items()})
-        logs.update({'gan/g_loss': float(total.detach()),
-                     'gan/g_fake': sum(fake_means.values()) * self.encoder_weight,
+        # Reduce detached telemetry only. Keep the local differentiable mean
+        # above unchanged: FSDP already averages the actual parameter gradients.
+        # Including row count also handles unequal per-rank active row counts.
+        vector = torch.tensor([v for name in self.names for v in
+                               (float(losses[name].detach()) * rows, fake_means[name] * rows)]
+                              + [float(rows)], dtype=torch.float64, device=self.device)
+        all_reduce_mean_(vector)
+        denominator = float(vector[-1])
+        entries = (vector[:-1] / denominator).reshape(len(self.names), 2).tolist()
+        logs = {f'gan/{name}/g_loss': entry[0] for name, entry in zip(self.names, entries)}
+        logs.update({f'gan/{name}/g_fake': entry[1] for name, entry in zip(self.names, entries)})
+        logs.update({'gan/g_loss': sum(entry[0] for entry in entries) * self.encoder_weight,
+                     'gan/g_fake': sum(entry[1] for entry in entries) * self.encoder_weight,
+                     'gan/g_rows_global': int(round(denominator * get_world_size())),
+                     'gan/g_metric_scope': 'global_active_rows',
                      'gan/g_phase': 'post_update_active'})
         return total, logs
 
