@@ -9,6 +9,7 @@ from pathlib import Path
 import signal
 import subprocess
 import time
+from h20_benchmark_acceptance import validate_benchmark_record, is_expected_cuda_oom
 
 ROOT = Path('/data/shaoshitong/rdm-sets')
 parser = argparse.ArgumentParser()
@@ -30,6 +31,18 @@ state = {'started_utc': STAMP, 'source': str(REPO),
          'formal_training_started': False, 'status': 'running', 'cases': []}
 if args.config:
     state['config'] = args.config
+    import yaml
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = REPO / config_path
+    config = yaml.safe_load(config_path.read_text())
+    spatial_enabled = bool(config.get('spatial_gan', {}).get('enabled', False))
+    probe_request = config.get('cache', {}).get('refresh_probe_rows') if spatial_enabled else None
+    retained_rows = config['window']['size'] - config['window']['stride'] if spatial_enabled else None
+else:
+    spatial_enabled = False
+    probe_request = retained_rows = None
+state['spatial_patchgan'] = spatial_enabled
 if args.reference_root:
     state['reference_root'] = args.reference_root
 
@@ -160,6 +173,17 @@ def run_case(group, micro, iterations=2, label=None):
     result = case_dir / f'benchmark-_flash_3_varlen_hub-micro{micro}-group{group}.json'
     if row['exit'] == 0:
         record = json.loads(result.read_text())
+        row['result'] = str(result)
+        try:
+            row['acceptance'] = validate_benchmark_record(
+                record, expected_spatial=spatial_enabled, expected_iterations=iterations,
+                expected_probe_request=probe_request, expected_retained_rows=retained_rows)
+        except ValueError as error:
+            row['status'] = 'failed'
+            row['acceptance_error'] = str(error)
+            row['last30'] = text.splitlines()[-30:]
+            publish()
+            raise RuntimeError(f'Benchmark acceptance failed: {name}: {error}') from error
         require_finite(record)
         assert len(record['steps']) == iterations
         assert all(not rank['logs']['skipped'] for step in record['steps'] for rank in step)
@@ -172,7 +196,7 @@ def run_case(group, micro, iterations=2, label=None):
         all_rows = [rank for step in record['steps'] for rank in step] + record['probe_refresh']
         row['peak_allocated_bytes'] = max(x['peak_allocated_bytes'] for x in all_rows)
         row['peak_reserved_bytes'] = max(x['peak_reserved_bytes'] for x in all_rows)
-    elif 'out of memory' in text.lower() and ('CUDA' in text or 'torch.OutOfMemoryError' in text):
+    elif is_expected_cuda_oom(text, timed_out=bool(row.get('timeout'))):
         row['status'] = 'oom'
         row['last30'] = text.splitlines()[-30:]
     else:
@@ -197,6 +221,9 @@ try:
         for item in previous['cases']:
             if item['status'] == 'passed':
                 record = json.loads(Path(item['result']).read_text())
+                validate_benchmark_record(record, expected_spatial=spatial_enabled,
+                                          expected_probe_request=probe_request,
+                                          expected_retained_rows=retained_rows)
                 require_finite(record)
                 assert len(record['steps']) >= 2 and record['probe_refresh'] is not None
                 assert all(not rank['logs']['skipped'] for step in record['steps'] for rank in step)

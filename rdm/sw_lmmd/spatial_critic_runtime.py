@@ -94,6 +94,7 @@ class SpatialGANRuntime:
         self.optimizer = torch.optim.AdamW(self.critic.parameters(), lr=cfg.lr,
                                            betas=tuple(cfg.betas), weight_decay=0.0)
         self.updates = 0
+        self._last_d_grad_norms = {}
         self.image_dims = {name: self.spatial_specs[name].channels for name in self.spatial_names}
         self.image_dims.update(self.global_image_dims)
         self.block = None
@@ -151,6 +152,21 @@ class SpatialGANRuntime:
         for parameter in params:
             parameter.grad = flat[offset:offset + parameter.numel()].view_as(parameter)
             offset += parameter.numel()
+        # Observe the already averaged gradients before optimizer.step/zero_grad.
+        # Reduce each parameter in its native dtype, then accumulate only scalar
+        # norm-squares in fp64; never materialize a second full-size gradient copy.
+        squares = {id(parameter): parameter.grad.detach().norm().double().square()
+                   for parameter in params}
+        def norm(parameters):
+            terms = [squares[id(parameter)] for parameter in parameters]
+            return float(torch.stack(terms).sum().sqrt()) if terms else 0.0
+        self._last_d_grad_norms = {'gan/d_grad_norm': norm(params)}
+        for name in self.spatial_names:
+            self._last_d_grad_norms[f'gan/{name}/d_grad_norm'] = norm(
+                self.critic['spatial'].heads[name].parameters())
+        for name in self.global_names:
+            self._last_d_grad_norms[f'gan/{name}/d_grad_norm'] = norm(
+                self.critic['global'].heads[name].parameters())
         return bool(torch.isfinite(flat).all())
 
     def update(self, fake_spatial, real_spatial, fake_global, real_global, tau):
@@ -197,7 +213,8 @@ class SpatialGANRuntime:
                 'gan/d_real': sum(v[1] for v in values) * self.encoder_weight,
                 'gan/d_fake': sum(v[2] for v in values) * self.encoder_weight,
                 'gan/d_acc': sum(v[3] for v in values) * self.encoder_weight,
-                'gan/d_skipped': not finite}
+                'gan/d_skipped': not finite, 'gan/d_updates': self.updates,
+                **self._last_d_grad_norms}
         for name, entry in zip(self.names, values):
             logs[f'gan/{name}/d_loss'], logs[f'gan/{name}/d_acc'] = entry[0], entry[3]
         return logs

@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import types
 import unittest
+from unittest import mock
 
 import torch
 from torch.nn import functional as F
@@ -178,6 +179,41 @@ class SpatialRuntimeTests(unittest.TestCase):
             torch.testing.assert_close(value, resumed.critic.state_dict()[name], atol=2e-9, rtol=1e-8)
         wrong_seed = self.runtime(1, seed=20)
         with self.assertRaises(ValueError): wrong_seed.load_state_dict(first.state_dict())
+
+    def test_d_gradient_norms_are_after_reduce_before_zero_without_extra_collectives(self):
+        runtime = self.runtime(2)
+        expected = {}
+        original_step = runtime.optimizer.step
+        def capture():
+            def norm(parameters):
+                return torch.cat([p.grad.detach().reshape(-1) for p in parameters]).norm().item()
+            expected['gan/d_grad_norm'] = norm(runtime.critic.parameters())
+            for name in runtime.spatial_names:
+                expected[f'gan/{name}/d_grad_norm'] = norm(runtime.critic['spatial'].heads[name].parameters())
+            for name in runtime.global_names:
+                expected[f'gan/{name}/d_grad_norm'] = norm(runtime.critic['global'].heads[name].parameters())
+            original_step()
+        runtime.optimizer.step = capture
+        # Artificial mean reduction is observable: the telemetry must reflect
+        # post-reduce gradients, not the unreduced local values. The second call
+        # is the pre-existing metrics reduction; no norm collective is added.
+        sizes = []
+        def simulated_reduce(value):
+            sizes.append(value.numel())
+            if len(sizes) == 1: value.mul_(0.5)
+            return value
+        with mock.patch.object(module, 'all_reduce_mean_', side_effect=simulated_reduce):
+            logs = runtime.update(*self.inputs())
+        self.assertEqual(len(sizes), 2)
+        self.assertGreater(sizes[0], sizes[1])
+        self.assertEqual(logs['gan/d_updates'], 1)
+        self.assertTrue(all(p.grad is None for p in runtime.critic.parameters()))
+        for key, value in expected.items():
+            self.assertGreater(value, 0)
+            self.assertAlmostEqual(logs[key], value, places=12)
+        self.assertAlmostEqual(logs['gan/d_grad_norm'] ** 2,
+            sum(logs[f'gan/{name}/d_grad_norm'] ** 2 for name in runtime.names), places=12)
+        self.assertEqual(runtime.update(*self.inputs())['gan/d_updates'], 2)
 
     def test_r1_and_unsupported_global_critic_are_explicitly_rejected(self):
         self.cfg.r1_gamma = 1.0

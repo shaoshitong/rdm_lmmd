@@ -26,7 +26,7 @@ export HF_HUB_OFFLINE=1
 cd "$REPO"
 CUDA_VISIBLE_DEVICES="" "$PYTHON" -m pytest -q tests/test_qwen3_vl_spatial.py \
   tests/test_reference_images.py tests/test_pixel_grad_caching.py tests/test_spatial_cache.py \
-  tests/test_spatial_configs.py z-image/tests/test_dinov3_spatial.py \
+  tests/test_spatial_configs.py tests/test_benchmark_acceptance.py z-image/tests/test_dinov3_spatial.py \
   z-image/tests/test_spatial_adversarial.py z-image/tests/test_spatial_critic_runtime.py \
   z-image/tests/test_spatial_trainer.py z-image/tests/test_zimage_multistep.py \
   z-image/tests/test_checkpoint_groups.py z-image/tests/test_qwen_text_store.py

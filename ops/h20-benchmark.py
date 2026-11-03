@@ -15,6 +15,7 @@ from rdm.utils.distributed import setup_distributed
 from rdm.utils.logging import setup_logging
 from rdm.utils.seed import fix_random_seeds
 from zimage_distill.launch import build_trainer
+from h20_benchmark_acceptance import validate_step_record, validate_benchmark_record
 
 ap = argparse.ArgumentParser()
 ap.add_argument('--micro-batch', type=int, choices=[1, 2, 4, 8, 16], required=True)
@@ -32,6 +33,10 @@ assert world == 2 and 32 % (world * a.micro_batch) == 0
 setup_logging(rank=rank)
 fix_random_seeds(0)
 cfg = load_config(a.config)
+spatial_enabled = bool(getattr(cfg, 'spatial_gan', {}).get('enabled', False))
+configured_g_start = cfg.gan.get('g_start_step', 50)
+if spatial_enabled and a.iterations < 3:
+    raise ValueError('Spatial Page acceptance requires three complete D/G iterations')
 cfg.reference_root = a.reference_root
 cfg.memory['micro_batch'] = a.micro_batch
 cfg.zimage['attention_backend'] = a.backend
@@ -48,15 +53,22 @@ for i in range(a.iterations):
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.synchronize()
     started = time.monotonic()
+    critic_updates_before = [critic.updates for critic in trainer.step_critics] if spatial_enabled else None
     logs = trainer.step()
+    critic_updates_after = [critic.updates for critic in trainer.step_critics] if spatial_enabled else None
     torch.cuda.synchronize()
     elapsed = time.monotonic() - started
-    assert logs.get('skipped') is False, logs
-    bad = [k for k, v in logs.items() if isinstance(v, (int, float)) and not math.isfinite(v)]
-    assert not bad, bad
-    row = {'iteration': i + 1, 'seconds': elapsed,
+    row = {'rank': rank, 'iteration': i + 1, 'seconds': elapsed,
            'peak_allocated_bytes': torch.cuda.max_memory_allocated(),
            'peak_reserved_bytes': torch.cuda.max_memory_reserved(), 'logs': logs}
+    if spatial_enabled:
+        row.update(critic_updates_before=critic_updates_before, critic_updates_after=critic_updates_after)
+    try:
+        validate_step_record(row, spatial=spatial_enabled, generation_steps=trainer.num_steps)
+    except ValueError as error:
+        print(json.dumps({'event': 'iteration_gate_failed', 'rank': rank,
+                          'error': str(error), 'row': row}, default=str), flush=True)
+        raise
     gathered = [None] * world
     dist.all_gather_object(gathered, row)
     if rank == 0:
@@ -65,11 +77,19 @@ for i in range(a.iterations):
                           'backend': a.backend, 'checkpoint_group_size': a.checkpoint_group_size,
                           'ranks': gathered}), flush=True)
 extra = None
+probe_contract = None
 if a.probe_refresh:
     from rdm.sw_lmmd.launch import cache_from_config
     from rdm.sw_lmmd.refresh import probe_drift, refresh_retained
     window = trainer.schedule.peek()
     policy = cache_from_config(cfg)
+    granule = world * a.micro_batch
+    probe_contract = {'requested_probe_rows': policy.refresh_probe_rows,
+                      'retained_rows': int(window.retained_ids.size), 'world_size': world,
+                      'micro_batch': a.micro_batch,
+                      'expected_probe_rows': min(int(policy.refresh_probe_rows), int(window.retained_ids.size))
+                                             // granule * granule,
+                      'spatial_streams': list(getattr(trainer, 'spatial_stream_names', []))}
     torch.cuda.reset_peak_memory_stats()
     torch.cuda.synchronize()
     started = time.monotonic()
@@ -87,8 +107,19 @@ if rank == 0:
     a.out_dir.mkdir(parents=True, exist_ok=True)
     suffix = f'-group{a.checkpoint_group_size}' if a.out_dir.name != 'control' else ''
     out = a.out_dir / f'benchmark-{a.backend}-micro{a.micro_batch}{suffix}.json'
-    out.write_text(json.dumps({'micro_batch': a.micro_batch, 'backend': a.backend,
-                               'checkpoint_group_size': a.checkpoint_group_size,
-                               'global_batch': 32, 'generator_gan_active': True, 'steps': rows,
-                               'probe_refresh': extra}, indent=2))
+    record = {'micro_batch': a.micro_batch, 'backend': a.backend,
+              'checkpoint_group_size': a.checkpoint_group_size,
+              'global_batch': 32, 'generator_gan_active': True, 'steps': rows,
+              'probe_refresh': extra, 'probe_refresh_contract': probe_contract, 'spatial_patchgan': spatial_enabled,
+              'generation_steps': trainer.num_steps, 'world_size': world,
+              'formal_training_started': False,
+              'bounded_test_overrides': {'gan.g_start_step': {'configured': configured_g_start, 'actual': 0}}}
+    try:
+        validate_benchmark_record(record, expected_spatial=spatial_enabled, expected_iterations=a.iterations,
+                                  require_probe_refresh=a.probe_refresh)
+    except ValueError as error:
+        print(json.dumps({'event': 'benchmark_gate_failed', 'rank': rank,
+                          'error': str(error), 'record': record}, default=str), flush=True)
+        raise
+    out.write_text(json.dumps(record, indent=2))
 dist.destroy_process_group()
