@@ -250,6 +250,15 @@ if [[ $DO_CONTEXTS -eq 1 ]]; then
     info "would run zimage_distill.contexts build on GPUs ${GPU_IDS[*]:-?}, then finalize"
   else
     [[ -f "$ROOT/env.sh" ]] || die "$ROOT/env.sh missing -- stage 2 has not completed"
+    # Downloads can take hours; recheck occupancy immediately before GPU work.
+    IDLE_STATE=$(smi "${SEL[@]}" --query-gpu=index,memory.used,utilization.gpu --format=csv,noheader,nounits)
+    python3 - "$IDLE_STATE" <<'PY'
+import sys
+for row in sys.argv[1].splitlines():
+    index, memory, utilization = map(int, row.split(','))
+    if memory > 32 or utilization != 0:
+        raise SystemExit(f"GPU {index} is occupied ({memory} MiB, {utilization}%); contexts not started")
+PY
     mkdir -p "$LOG_DIR"
     pids=()
     for ((r=0; r<N_GPU; r++)); do
