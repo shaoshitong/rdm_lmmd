@@ -260,7 +260,9 @@ def main(argv=None):
         tau.requires_grad_()
         report["text_condition"] = {"path": str(text_path), "row": args.text_row, "shape": list(tau.shape)}
         records = {name: [] for name in critic.names}
-        hooks = [head.register_forward_hook(lambda module, inputs, result, name=name: records[name].append(result))
+        # SpatialFeatureCritic uses head.aggregate()/head.f() directly. The final
+        # readout module is the observable logit boundary on both API paths.
+        hooks = [head.readout.register_forward_hook(lambda module, inputs, result, name=name: records[name].append(result))
                  for name, head in critic.heads.items()]
         # A distinct synthetic feature pair avoids the zero D gradient of identical
         # real/fake logits. These losses are routing oracles, not quality metrics.
@@ -312,7 +314,7 @@ def main(argv=None):
                 observed.append(True)
 
             pre = critic.register_forward_pre_hook(frozen_pre)
-            hooks = [head.register_forward_hook(lambda module, inputs, result, key=key: logits.__setitem__(key, result))
+            hooks = [head.readout.register_forward_hook(lambda module, inputs, result, key=key: logits.__setitem__(key, result))
                      for key, head in critic.heads.items()]
             try:
                 maps = dict(baseline)
