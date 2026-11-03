@@ -87,6 +87,8 @@ class ZImageStudent(nn.Module):
             transformer = ZImageTransformer2DModel.from_pretrained(path, torch_dtype=param_dtype)
         self.transformer = transformer.to(dtype=param_dtype)
         if attention_backend is not None:
+            from .attention import pin_attention_kernel
+            pin_attention_kernel(attention_backend)
             # Varlen FA3 preserves the padding mask when prompts in a micro-batch have
             # different token lengths. The fixed-length FA3 backend rejects this mask.
             self.transformer.set_attention_backend(attention_backend)

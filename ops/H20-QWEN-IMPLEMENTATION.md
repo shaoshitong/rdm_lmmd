@@ -48,3 +48,10 @@ benchmark driver. Only small JSON timings/loss/memory receipts are saved. The fo
 experiments are not started. GPU occupancy, locks and exit status are checked explicitly.
 
 Logs and completion receipts: `/data/shaoshitong/rdm-sets/launch-logs/` and `control/`.
+
+## Pinned kernel compatibility
+
+FA3 uses immutable kernel revision `acb0f42e6901d3e9effa8a83bd32bc2bf0cfdfc2` and kernels0.18.1.
+The moving upstream v1 branch currently resolves to builds requiring Torch2.9 or newer.
+The selected revision was checked against the official HF API and contains the matching
+Torch2.8/CUDA12.6/x86_64 build. The kernel revision is also recorded in GPU acceptance output.

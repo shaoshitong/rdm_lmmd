@@ -3,10 +3,12 @@ import json
 from pathlib import Path
 import torch
 from diffusers.models.attention_dispatch import attention_backend, dispatch_attention_fn
+from zimage_distill.attention import FA3_REVISION, pin_attention_kernel
 
 torch.manual_seed(13)
 assert torch.cuda.get_device_capability() == (9, 0)
 backend = '_flash_3_varlen_hub'
+pin_attention_kernel(backend)
 results = []
 for length in (128, 257):
     tensors = [torch.randn(2, length, 4, 128, device='cuda', dtype=torch.bfloat16)
@@ -30,7 +32,7 @@ for length in (128, 257):
     assert row['output_relative_l2'] < 0.02, row
     assert max(row['gradient_relative_l2']) < 0.03, row
     results.append(row)
-record = {'backend': backend, 'device': torch.cuda.get_device_name(),
+record = {'backend': backend, 'kernel_revision': FA3_REVISION, 'device': torch.cuda.get_device_name(),
           'torch': torch.__version__, 'checks': results, 'passed': True}
 path = Path('/data/shaoshitong/rdm-sets/control/fa3-kernel-check.json')
 path.write_text(json.dumps(record, indent=2))
