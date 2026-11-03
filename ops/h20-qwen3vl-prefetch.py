@@ -8,18 +8,20 @@ HF's normal cache locks and incomplete files provide resumable transfers.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
 import os
 import platform
 import re
 import struct
+import subprocess
 import threading
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 REPO = "Qwen/Qwen3-VL-4B-Instruct"
 REVISION = "ebb281ec70b05090aa6165b016eac8ec08e71b17"
@@ -127,6 +129,149 @@ def verify_visual_inventory(directory):
     return sorted(visual)
 
 
+def redact(value):
+    return re.sub(r"https?://\S+|hf_[A-Za-z0-9]+", "[redacted]", str(value))
+
+
+def real_directory(path):
+    if path.is_symlink():
+        raise ValueError(f"refusing symlink staging/snapshot directory: {path}")
+    path.mkdir(parents=True, exist_ok=True)
+    if not path.is_dir():
+        raise ValueError(f"not a directory: {path}")
+
+
+def parse_aria_progress(line):
+    """Read actual completed bytes from aria2, never its sparse file length."""
+    match = re.search(
+        r"\[#[0-9a-f]+\s+(\d+)B?/(\d+)B?(?:\([^)]*\))?[^\]]*?\bDL:(\d+)B?\b", line,
+        re.IGNORECASE)
+    if match is None:
+        return None
+    return {"completed_bytes": int(match[1]), "aria_total_bytes": int(match[2]),
+            "download_speed_bytes_per_second": int(match[3])}
+
+
+def aria2_shard(root, expected, endpoint, progress_seconds):
+    """Download into separate resumable staging; never open HF payload blobs."""
+    staging = root / ".cache/qwen3vl-model-aria2"
+    folder = staging / REVISION
+    for directory in (root / ".cache", staging, folder):
+        real_directory(directory)
+    payload = folder / SHARD
+    bitmap = payload.with_name(payload.name + ".aria2")
+    log_path = folder / "aria2.download.log"
+    exit_path = folder / "aria2.exit.json"
+    for path in (payload, bitmap, log_path):
+        if path.is_symlink():
+            raise ValueError(f"refusing symlink aria2 payload/control: {path}")
+    # Avoid two fast-mode processes changing the same staging payload. The
+    # existing HF transfer owns different files and is not affected by this lock.
+    with (folder / "aria2.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if payload.exists() and payload.stat().st_size == expected["bytes"]:
+            try:
+                result = verify_file(payload, expected)
+            except ValueError:
+                if not bitmap.exists():
+                    raise ValueError("full-size aria2 staging has a wrong official SHA and no bitmap; retained")
+            else:
+                emit("aria2_verified_reuse", completed_bytes=expected["bytes"],
+                     expected_bytes=expected["bytes"], hashes_verified=True)
+                return payload, result, {"aria2_log": str(log_path), "aria2_exit": str(exit_path),
+                                         "staging_payload": str(payload), "reused_verified_payload": True}
+        url = endpoint.rstrip("/") + "/" + REPO + "/resolve/" + REVISION + "/" + quote(SHARD)
+        command = ["aria2c", "-c", "-x16", "-s16", "-k4M", "--all-proxy=", "--http-proxy=",
+                   "--https-proxy=", "--auto-file-renaming=false", "--file-allocation=none",
+                   "--allow-overwrite=false", "--show-console-readout=false", "--human-readable=false",
+                   "--enable-color=false", "--summary-interval=" + str(max(1, int(progress_seconds))),
+                   "--console-log-level=warn", "--max-tries=5", "--retry-wait=5", "--connect-timeout=30",
+                   "--timeout=120", "--dir=" + str(folder), "--out=" + payload.name, url]
+        child_env = {key: value for key, value in os.environ.items()
+                     if key.lower() not in ("http_proxy", "https_proxy", "all_proxy", "no_proxy")}
+        child_env["NO_PROXY"] = "*"
+        started = now()
+        atomic_json(folder / "aria2.command.json", {"command": command, "started_at": started})
+        tail, interrupted = [], None
+        emit("aria2_start", name=SHARD, expected_bytes=expected["bytes"], connections=16,
+             log=str(log_path), completed_bytes=None, progress_source="aria2_console")
+        with log_path.open("a") as log:
+            log.write(json.dumps({"command": command, "started_at": started}) + "\n")
+            log.flush()
+            try:
+                process = subprocess.Popen(command, env=child_env, stdout=subprocess.PIPE,
+                                           stderr=subprocess.STDOUT, text=True, errors="replace")
+            except BaseException as error:
+                atomic_json(exit_path, {"command": command, "exit": None, "last30": [],
+                                       "started_at": started, "finished_at": now(),
+                                       "spawn_error": type(error).__name__})
+                raise
+            try:
+                for line in process.stdout:
+                    safe = redact(line.rstrip())
+                    log.write(safe + "\n")
+                    log.flush()
+                    tail = (tail + [safe])[-30:]
+                    progress = parse_aria_progress(safe)
+                    if progress is not None:
+                        emit("aria2_progress", name=SHARD, expected_bytes=expected["bytes"],
+                             hashes_verified=False, progress_source="aria2_console", **progress)
+                code = process.wait()
+            except BaseException as error:
+                interrupted = type(error).__name__
+                process.terminate()  # Only this newly created aria2 child.
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                code = process.returncode
+                raise
+            finally:
+                process.stdout.close()
+                outcome = {"command": command, "exit": process.returncode, "last30": tail,
+                           "started_at": started, "finished_at": now(), "interrupted": interrupted}
+                atomic_json(exit_path, outcome)
+                log.write(json.dumps({"exit": process.returncode, "finished_at": now()}) + "\n")
+                log.flush()
+        if code != 0:
+            raise RuntimeError(f"aria2 exit {code}; command, exit and sanitized tail retained at {exit_path}")
+        # Exit0 alone and full sparse length alone are insufficient.
+        emit("hash_start", name=SHARD, bytes=expected["bytes"])
+        result = verify_file(payload, expected)
+        emit("aria2_complete", name=SHARD, completed_bytes=expected["bytes"],
+             expected_bytes=expected["bytes"], hashes_verified=True, aria2_exit=0)
+        return payload, result, {"aria2_log": str(log_path), "aria2_exit": str(exit_path),
+                                 "staging_payload": str(payload), "reused_verified_payload": False}
+
+
+def assemble_aria_snapshot(root, json_snapshot, payload, rows, verified_sources):
+    """Publish a separate view, leaving all active HF payload cache files alone."""
+    base = root / "models/qwen3vl-4b-vision"
+    for directory in (root / "models", base):
+        real_directory(directory)
+    final = base / REVISION
+    if final.exists() or final.is_symlink():
+        if final.is_symlink() or not final.is_dir():
+            raise ValueError("existing independent snapshot is not a real directory")
+        verified = [verify_file(final / row["name"], row) for row in rows]
+        return final, verified, verify_visual_inventory(final)
+    temporary = base / ("." + REVISION + ".assembling." + uuid.uuid4().hex)
+    temporary.mkdir()
+    for row in rows:
+        destination = temporary / row["name"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if row["name"] == SHARD:
+            os.link(payload, destination)  # Same ROOT filesystem; no second payload copy.
+        else:
+            os.symlink(str((json_snapshot / row["name"]).resolve()), destination)
+    visual = verify_visual_inventory(temporary)
+    os.rename(temporary, final)
+    verified = [{**verified_sources[row["name"]], "path": str(final / row["name"]),
+                 "source_path": verified_sources[row["name"]]["path"]} for row in rows]
+    return final, verified, visual
+
+
 def observed_blob_bytes(blob):
     """Observe one blob, including HF's digest.<etag>.incomplete naming."""
     candidates = [blob, blob.with_name(blob.name + ".incomplete")]
@@ -183,6 +328,8 @@ def arguments(argv=None):
     parser.add_argument("--root", type=Path, default=Path("/data/shaoshitong/rdm-sets"))
     parser.add_argument("--endpoint", default="https://hf-mirror.com",
                         help="Payload transport only; metadata always uses official HF")
+    parser.add_argument("--transport", choices=("hf", "aria2"), default="hf",
+                        help="aria2 uses separate 16-connection model staging; JSON still uses HF")
     parser.add_argument("--max-workers", type=int, default=2)
     parser.add_argument("--progress-seconds", type=float, default=5)
     parser.add_argument("--trust-env-transport", action="store_true",
@@ -217,31 +364,44 @@ def main(argv=None):
     control = args.root / "control"
     inventory = {"repo": REPO, "revision": REVISION, "official_endpoint": OFFICIAL,
                  "transport_endpoint": args.endpoint.rstrip("/"), "files": rows,
+                 "payload_transport": args.transport,
                  "metadata_checked_at": now(), "first_shard_requested": False}
     atomic_json(control / "qwen3vl-4b-prefetch-inventory.json", inventory)
     # Only the process-local transport client changes after official metadata.
     hf.set_client_factory(lambda: httpx.Client(
         trust_env=args.trust_env_transport, follow_redirects=True, timeout=120))
     emit("fetch", repo=REPO, revision=REVISION, selected_files=[row["name"] for row in rows],
-         expected_bytes=sum(row["bytes"] for row in rows), cache=str(cache))
-    with CacheProgress(cache, rows, args.progress_seconds):
-        directory = Path(hf.snapshot_download(
+         expected_bytes=sum(row["bytes"] for row in rows), cache=str(cache), transport=args.transport)
+    hf_rows = rows if args.transport == "hf" else [row for row in rows if row["name"] != SHARD]
+    with CacheProgress(cache, hf_rows, args.progress_seconds):
+        hf_directory = Path(hf.snapshot_download(
             REPO, repo_type="model", revision=REVISION,
-            allow_patterns=[row["name"] for row in rows], cache_dir=cache,
+            allow_patterns=[row["name"] for row in hf_rows], cache_dir=cache,
             max_workers=args.max_workers, endpoint=args.endpoint.rstrip("/"), token=False))
-    if directory.name != REVISION:
+    if hf_directory.name != REVISION:
         raise ValueError("download snapshot directory does not match the pinned revision")
-    verified = []
-    for row in rows:
+    source_verified = {}
+    for row in hf_rows:
         emit("hash_start", name=row["name"], bytes=row["bytes"])
-        verified.append(verify_file(directory / row["name"], row))
+        source_verified[row["name"]] = verify_file(hf_directory / row["name"], row)
         emit("hash_verified", name=row["name"], bytes=row["bytes"], algorithm=row["algorithm"])
-    visual = verify_visual_inventory(directory)
+    transfer_details = {}
+    if args.transport == "aria2":
+        shard = next(row for row in rows if row["name"] == SHARD)
+        payload, result, transfer_details = aria2_shard(
+            args.root, shard, args.endpoint, args.progress_seconds)
+        source_verified[SHARD] = result
+        directory, verified, visual = assemble_aria_snapshot(
+            args.root, hf_directory, payload, rows, source_verified)
+    else:
+        directory = hf_directory
+        verified = [source_verified[row["name"]] for row in rows]
+        visual = verify_visual_inventory(directory)
     receipt = {**inventory, "files": verified, "snapshot": str(directory),
                "verified_at": now(), "all_official_hashes_verified": True,
                "visual_key_count": len(visual), "visual_keys": visual,
                "model_tensors_loaded": False, "first_shard_requested": False,
-               "receipt_version": 1}
+               "receipt_version": 1, **transfer_details}
     atomic_json(control / RECEIPT, receipt)
     emit("complete", receipt=str(control / RECEIPT), snapshot=str(directory),
          bytes=sum(row["bytes"] for row in rows), visual_key_count=len(visual),

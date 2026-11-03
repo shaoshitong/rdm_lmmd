@@ -586,8 +586,12 @@ def main(argv=None):
                     'completed_rows': int(visited.sum()), 'total_rows': NROWS, 'metadata_published': False})
         print(json.dumps({'event': 'shard_committed', 'shard': shard['name'],
                           'completed_rows': int(visited.sum()), 'audit_only': args.audit_only}), flush=True)
-        if not args.keep_tars:
-            tar.unlink(); fsync_dir(tar.parent)
+        if array is not None and not args.keep_tars:
+            tar.unlink()
+            # A crash after all bytes arrived can leave a valid tar and old aria2
+            # bitmap; remove only after this tar's durable feature receipt exists.
+            Path(str(tar) + '.aria2').unlink(missing_ok=True)
+            fsync_dir(tar.parent)
     if args.audit_only or args.limit_shards is not None:
         print('PILOT_COMPLETE; final metadata NOT published', flush=True)
         lock.close()

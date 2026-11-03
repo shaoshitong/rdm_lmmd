@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 import os
+import re
 from pathlib import Path
 import signal
 import subprocess
@@ -13,16 +14,24 @@ ROOT = Path('/data/shaoshitong/rdm-sets')
 parser = argparse.ArgumentParser()
 parser.add_argument('--resume-summary', type=Path)
 parser.add_argument('--only-case', type=int, nargs=2, metavar=('GROUP', 'MICRO'))
+parser.add_argument('--config')
+parser.add_argument('--reference-root')
+parser.add_argument('--state-prefix', default='checkpoint-sweep')
 args = parser.parse_args()
+assert re.fullmatch('[a-z0-9-]+', args.state_prefix)
 REPO = Path(__file__).resolve().parents[1]
 STAMP = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-OUT = ROOT / 'control/checkpoint-sweep' / STAMP
+OUT = ROOT / 'control' / args.state_prefix / STAMP
 OUT.mkdir(parents=True)
-LATEST = ROOT / 'control/checkpoint-sweep-latest.json'
+LATEST = ROOT / 'control' / (args.state_prefix + '-latest.json')
 state = {'started_utc': STAMP, 'source': str(REPO),
          'source_commit': (REPO / 'SOURCE_COMMIT').read_text().strip(),
          'output': str(OUT), 'global_batch': 32, 'physical_gpus': [4, 5],
          'formal_training_started': False, 'status': 'running', 'cases': []}
+if args.config:
+    state['config'] = args.config
+if args.reference_root:
+    state['reference_root'] = args.reference_root
 
 
 def terminate(signum, frame):
@@ -117,6 +126,10 @@ def run_case(group, micro, iterations=2, label=None):
                str(REPO / 'ops/h20-benchmark.py'), '--backend', '_flash_3_varlen_hub',
                '--micro-batch', str(micro), '--checkpoint-group-size', str(group),
                '--iterations', str(iterations), '--probe-refresh', '--out-dir', str(case_dir)]
+    if args.config:
+        command.extend(['--config', args.config])
+    if args.reference_root:
+        command.extend(['--reference-root', args.reference_root])
     row = {'name': name, 'group_size': group, 'micro_batch': micro,
            'grad_accum': 16 // micro, 'command': command, 'status': 'running',
            'log': str(case_dir / 'run.log'), 'nvml_peak_mib': {str(x[0]): x[1] for x in idle}}
