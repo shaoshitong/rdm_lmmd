@@ -127,6 +127,20 @@ def verify_visual_inventory(directory):
     return sorted(visual)
 
 
+def observed_blob_bytes(blob):
+    """Observe one blob, including HF's digest.<etag>.incomplete naming."""
+    candidates = [blob, blob.with_name(blob.name + ".incomplete")]
+    # The separating dot keeps another blob with a longer digest prefix out.
+    candidates.extend(blob.parent.glob(blob.name + ".*.incomplete"))
+    available = 0
+    for candidate in candidates:
+        try:
+            available = max(available, candidate.stat().st_size)
+        except FileNotFoundError:
+            pass  # The downloader may rename a completed partial during polling.
+    return available
+
+
 class CacheProgress:
     """Report observed cache bytes, including resumable .incomplete files."""
     def __init__(self, cache, rows, interval):
@@ -140,12 +154,7 @@ class CacheProgress:
         base = self.cache / ("models--" + REPO.replace("/", "--")) / "blobs"
         for row in self.rows:
             blob = base / row["digest"]
-            available = 0
-            for candidate in (blob, blob.with_name(blob.name + ".incomplete")):
-                try:
-                    available = max(available, candidate.stat().st_size)
-                except FileNotFoundError:
-                    pass
+            available = observed_blob_bytes(blob)
             files.append({"name": row["name"], "observed_bytes": available,
                           "expected_bytes": row["bytes"]})
         total = sum(row["observed_bytes"] for row in files)
