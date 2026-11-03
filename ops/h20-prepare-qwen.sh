@@ -21,9 +21,9 @@ date -u +%FT%TZ > "$ROOT/control/prepare-qwen.started"
 cd "$REPO"
 git rev-parse HEAD
 # Downloads do not need the training environment or GPUs.
-python3 ops/h20-qwen-prefetch.py >"$ROOT/launch-logs/reference-qwen.log" 2>&1 &
+/usr/bin/python3 ops/h20-qwen-prefetch.py >"$ROOT/launch-logs/reference-qwen.log" 2>&1 &
 ref_pid=$!
-python3 scripts/fetch_prerequisites.py --root "$ROOT" --group zimage --group encoders \
+/usr/bin/python3 scripts/fetch_prerequisites.py --root "$ROOT" --group zimage --group encoders \
   --encoders dinov3_l,siglip2,aimv2_huge >"$ROOT/launch-logs/models.log" 2>&1 &
 models_pid=$!
 prepare_env() {
