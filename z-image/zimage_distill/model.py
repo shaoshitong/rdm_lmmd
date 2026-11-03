@@ -75,7 +75,8 @@ class ZImageStudent(nn.Module):
 
     def __init__(self, image_resolution: int = 1024, repo: str = ZIMAGE_REPO,
                  param_dtype: torch.dtype = torch.float32, gradient_checkpointing: bool = True,
-                 transformer: nn.Module | None = None, attention_backend: str | None = None):
+                 transformer: nn.Module | None = None, attention_backend: str | None = None,
+                 checkpoint_group_size: int = 1):
         """``transformer``: a prebuilt model to wrap instead of loading Z-Image-Turbo (tests)."""
         super().__init__()
         if image_resolution % (2 * VAE_DOWNSAMPLE):
@@ -95,6 +96,9 @@ class ZImageStudent(nn.Module):
             logger.info("[zimage] transformer attention backend: %s", attention_backend)
         if gradient_checkpointing:
             self.transformer.enable_gradient_checkpointing()
+            from .checkpointing import configure_checkpoint_groups
+            groups = configure_checkpoint_groups(self.transformer, checkpoint_group_size)
+            logger.info("[zimage] activation checkpoint groups: %s", groups)
         self.image_resolution = int(image_resolution)
         self.in_channels = LATENT_CHANNELS
         self.input_size = self.image_resolution // VAE_DOWNSAMPLE

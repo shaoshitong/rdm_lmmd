@@ -162,7 +162,8 @@ def build_trainer(cfg, device: str = "cuda") -> MultiStepTrainer:
     model = ZImageStudent(image_resolution=img_size, repo=repo,
                           param_dtype=policy.param_dtype,
                           gradient_checkpointing=bool(getattr(cfg, "grad_checkpointing", True)),
-                          attention_backend=zcfg.get("attention_backend"))
+                          attention_backend=zcfg.get("attention_backend"),
+                          checkpoint_group_size=int(zcfg.get("checkpoint_group_size", 1)))
     if getattr(cfg, "load_from", None):
         load_student_weights(model, cfg.load_from)
     if policy.shard != "fsdp":
