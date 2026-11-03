@@ -73,6 +73,7 @@ if a.probe_refresh:
     started = time.monotonic()
     stats = probe_drift(trainer, window, policy.refresh_probe_rows)
     stats.update(refresh_retained(trainer, window))
+    assert all(math.isfinite(v) for v in stats.values() if isinstance(v, (int, float))), stats
     torch.cuda.synchronize()
     extra = {'seconds': time.monotonic() - started, 'stats': stats,
              'peak_allocated_bytes': torch.cuda.max_memory_allocated(),

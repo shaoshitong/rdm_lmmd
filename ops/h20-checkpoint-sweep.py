@@ -1,6 +1,7 @@
 """Bounded independent GPU4/5 capacity/throughput search; never launch formal A/B."""
 import datetime as dt
 import json
+import math
 import os
 from pathlib import Path
 import signal
@@ -34,6 +35,64 @@ def gpu_state():
     return [list(map(int, row.split(','))) for row in text.splitlines()]
 
 
+def require_finite(value):
+    if isinstance(value, dict):
+        for item in value.values():
+            require_finite(item)
+    elif isinstance(value, list):
+        for item in value:
+            require_finite(item)
+    elif isinstance(value, (int, float)) and not math.isfinite(value):
+        raise ValueError('Nonfinite benchmark/probe/refresh result')
+
+
+def stop_test_tree(process, case_dir):
+    # Elastic ranks have separate sessions. Snapshot descendants rather than
+    # assuming killpg(torchrun) reaches them; PID start ticks prevent PID reuse.
+    owned = []
+    def collect(pid):
+        p = Path('/proc') / str(pid)
+        try:
+            stat = (p / 'stat').read_text().split(') ', 1)[1].split()
+            owned.append((pid, int(stat[19])))
+            for child in (p / 'task' / str(pid) / 'children').read_text().split():
+                collect(int(child))
+        except (OSError, ValueError):
+            return
+    if process.poll() is None:
+        collect(process.pid)
+    # An elastic parent can already have exited while a rank's independent
+    # session remains. Match this exact task entry+case, never an arbitrary GPU PID.
+    entry = str(REPO / 'ops/h20-benchmark.py')
+    for p in Path('/proc').iterdir():
+        if not p.name.isdigit():
+            continue
+        try:
+            args = [os.fsdecode(x) for x in (p / 'cmdline').read_bytes().split(b'\0')[:-1]]
+            if entry in args and '--out-dir' in args and args[args.index('--out-dir') + 1] == str(case_dir):
+                collect(int(p.name))
+        except (OSError, ValueError, IndexError):
+            continue
+    owned = list(dict.fromkeys(owned))
+    def signal_same(pid, ticks, sig):
+        try:
+            stat = (Path('/proc') / str(pid) / 'stat').read_text().split(') ', 1)[1].split()
+            if int(stat[19]) == ticks:
+                os.kill(pid, sig)
+        except (OSError, ValueError):
+            pass
+    for pid, ticks in reversed(owned):
+        signal_same(pid, ticks, signal.SIGTERM)
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+    for pid, ticks in reversed(owned):
+        signal_same(pid, ticks, signal.SIGKILL)
+    process.wait()
+    return [{'pid': pid, 'start_ticks': ticks} for pid, ticks in owned]
+
+
 def run_case(group, micro, iterations=2, label=None):
     name = label or f'group{group}-micro{micro}'
     case_dir = OUT / name
@@ -55,25 +114,27 @@ def run_case(group, micro, iterations=2, label=None):
         process = subprocess.Popen(command, cwd=REPO, stdout=log, stderr=subprocess.STDOUT,
                                    start_new_session=True)
         row['pid'] = process.pid
-        while process.poll() is None:
-            for index, used, total, utilization in gpu_state():
-                row['nvml_peak_mib'][str(index)] = max(row['nvml_peak_mib'][str(index)], used)
-            if time.monotonic() - started > 1200:
-                os.killpg(process.pid, signal.SIGTERM)
-                try:
-                    process.wait(timeout=20)
-                except subprocess.TimeoutExpired:
-                    os.killpg(process.pid, signal.SIGKILL)
-                    process.wait()
-                row['timeout'] = True
-                break
-            time.sleep(0.5)
+        try:
+            while process.poll() is None:
+                for index, used, total, utilization in gpu_state():
+                    row['nvml_peak_mib'][str(index)] = max(row['nvml_peak_mib'][str(index)], used)
+                if time.monotonic() - started > 1200:
+                    row['timeout'] = True
+                    row['cleanup'] = stop_test_tree(process, case_dir)
+                    break
+                time.sleep(0.5)
+        finally:
+            if process.poll() is None:
+                row['cleanup'] = stop_test_tree(process, case_dir)
         row['exit'] = process.wait()
+        if row['exit'] != 0 and 'cleanup' not in row:
+            row['cleanup'] = stop_test_tree(process, case_dir)
     row['wall_seconds'] = time.monotonic() - started
     text = (case_dir / 'run.log').read_text(errors='replace')
     result = case_dir / f'benchmark-_flash_3_varlen_hub-micro{micro}-group{group}.json'
     if row['exit'] == 0:
         record = json.loads(result.read_text())
+        require_finite(record)
         assert len(record['steps']) == iterations
         assert all(not rank['logs']['skipped'] for step in record['steps'] for rank in step)
         assert record['probe_refresh'] is not None
@@ -119,10 +180,12 @@ try:
     # does not by itself imply more throughput. Reserve5% for token-length variation.
     total_mib = min(x[2] for x in gpu_state())
     stable = [x for x in candidates if max(x['nvml_peak_mib'].values()) <= total_mib * 0.95]
-    fastest = min(stable or candidates, key=lambda x: x['mean_seconds'])
+    if not stable:
+        raise RuntimeError('No measured point leaves the required5% memory margin')
+    fastest = min(stable, key=lambda x: x['mean_seconds'])
     winner = run_case(fastest['group_size'], fastest['micro_batch'], iterations=3, label='winner-repeat')
-    if winner['status'] != 'passed':
-        raise RuntimeError('Winning configuration did not repeat successfully')
+    if winner['status'] != 'passed' or max(winner['nvml_peak_mib'].values()) > total_mib * 0.95:
+        raise RuntimeError('Winning configuration failed repeat/memory-margin acceptance')
     state['winner'] = winner
     state['status'] = 'complete'
     publish()
