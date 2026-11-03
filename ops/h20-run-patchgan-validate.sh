@@ -63,6 +63,9 @@ store.close()
 PY
 flock -n 9 || exit 3
 check_idle
+CUDA_VISIBLE_DEVICES=4 "$PYTHON" ops/h20-patchgan-gpu-check.py --root "$ROOT" \
+  --image-manifest "$IMAGES" --image-row 0 --text-row 0 \
+  --output "$ROOT/control/patchgan-real-png-gpu-check.json"
 export CUDA_VISIBLE_DEVICES=4,5
 CONFIG=z-image/configs/zimage_2step_1024_dlr1e-4_spatial_patchgan_h20_fa3.yaml
 STORE="$ROOT/zimage/zimage-ref-v1/reference_store_qwen"
