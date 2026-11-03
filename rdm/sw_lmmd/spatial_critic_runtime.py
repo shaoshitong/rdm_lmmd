@@ -98,6 +98,7 @@ class SpatialGANRuntime:
         self.image_dims.update(self.global_image_dims)
         self.block = None
         self.contract = {'version': 1, 'base_encoders': self.base_encoder_names,
+                         'head_order': self.names, 'dtype': str(self.dtype),
                          'spatial': {name: asdict(spec) for name, spec in self.spatial_specs.items()},
                          'spatial_options': options, 'global': self.global_names,
                          'seed': self.seed, 'encoder_weight': self.encoder_weight,

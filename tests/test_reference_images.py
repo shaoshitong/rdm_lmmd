@@ -200,3 +200,13 @@ def test_explicit_partial_pilot_only_reads_committed_rows(tmp_path):
     store.close()
     with pytest.raises(ValueError, match="full canonical row count"):
         ReferenceImageStore(directory, allow_partial=True)  # Default requires125808 total rows.
+    # A full preparation may resume without invalidating the immutable pilot DB.
+    second = tmp_path / "shard-00001.tar"
+    second_shard = make_tar(second, [1])
+    builder = ReferenceImageIndexBuilder(directory, {}, num_rows=2)
+    builder.index_tar(second, second_shard, prompts, mapping, render)
+    builder.finalize([shard, second_shard])
+    old_pilot = ReferenceImageStore(directory / "manifest.partial.json", allow_partial=True, expected_num_rows=2)
+    assert old_pilot.available_row_ids == (1,)
+    assert old_pilot.read_uint8([1]).shape[0] == 1
+    old_pilot.close()

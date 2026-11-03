@@ -110,6 +110,36 @@ class SpatialRuntimeTests(unittest.TestCase):
         self.assertEqual(set(counts.values()), {1})
         for handle in handles: handle.remove()
 
+    def test_float32_gradients_and_updates_above_roundoff_agree(self):
+        options = {'spatial_branch_specs': self.specs, 'spatial_options': {'heads': 2}}
+        whole = SpatialGANRuntime(self.cfg, self.store, self.base_names,
+                                  critic_micro_batch=5, step_seed=19, **options)
+        chunks = SpatialGANRuntime(self.cfg, self.store, self.base_names,
+                                   critic_micro_batch=2, step_seed=19, **options)
+        gradients = []
+        for runtime in (whole, chunks):
+            original_step = runtime.optimizer.step
+            def step(*args, rt=runtime, original=original_step, **kwargs):
+                gradients.append({name: p.grad.clone() for name, p in rt.critic.named_parameters()})
+                return original(*args, **kwargs)
+            runtime.optimizer.step = step
+        values = self.inputs(); whole.update(*values); chunks.update(*values)
+        for name, value in whole.critic.named_parameters():
+            other = dict(chunks.critic.named_parameters())[name]
+            g, h = gradients[0][name], gradients[1][name]
+            torch.testing.assert_close(g, h, atol=3e-6, rtol=1e-4)
+            difference = (value.detach() - other.detach()).abs()
+            # Adam can amplify FP32 cancellation noise near epsilon (e.g. a
+            # balanced hinge readout bias whose exact gradient is zero). Require
+            # all updates beyond numerical tolerance to be confined to that
+            # near-zero-gradient regime, rather than claiming bitwise parity.
+            sensitive = difference > 2e-6
+            if sensitive.any():
+                self.assertLess(torch.maximum(g.abs(), h.abs())[sensitive].max().item(), 3e-6)
+            self.assertLessEqual(difference.max().item(), 2 * self.cfg.lr)
+        for name, value in whole.critic.named_buffers():
+            torch.testing.assert_close(value, dict(chunks.critic.named_buffers())[name], atol=0, rtol=0)
+
     def test_g_uses_updated_disc_caption_concat_weight_one_third_and_image_prefix_only(self):
         runtime = self.runtime(2); runtime.update(*self.inputs())
         fake, _, fake_g, _, tau = self.inputs(requires_grad=True)

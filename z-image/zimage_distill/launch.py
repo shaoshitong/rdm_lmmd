@@ -120,6 +120,8 @@ def build_trainer(cfg, device: str = "cuda") -> MultiStepTrainer:
     """Assemble the full trainer from a parsed config (needs the weights and a built store)."""
     from rdm.representation.battery import Battery
     from rdm.representation.registry import by_name
+    spatial_cfg = _block(cfg, 'spatial_gan')
+    spatial_enabled = bool(spatial_cfg.get('enabled', False))
 
     window = window_from_config(cfg)
     if window.group_by_prompt:
@@ -186,15 +188,24 @@ def build_trainer(cfg, device: str = "cuda") -> MultiStepTrainer:
                 enc.to(torch.bfloat16)
 
     gan, critics = gan_from_config(cfg), None
+    if spatial_enabled and not gan.enabled:
+        raise ValueError('spatial_gan.enabled requires gan.enabled')
     if gan.enabled:
         from rdm.sw_lmmd.adversarial import build_critic
         if gan.critic != "row":
             raise ValueError("only gan.critic: row is wired per step")
         warn_gan_pipeline(gan, policy)
         # one critic per step, each from its own fixed seed (the same on every rank)
-        critics = [build_critic(dataclasses.replace(gan, seed=gan.seed + k), store, names,
-                                joint=getattr(cfg, "joint", True), device=device)
-                   for k in range(S)]
+        if spatial_enabled:
+            from rdm.sw_lmmd.spatial_critic_runtime import SpatialGANRuntime
+            critics = [SpatialGANRuntime(
+                dataclasses.replace(gan, seed=gan.seed+k), store, names, device=device,
+                critic_micro_batch=policy.micro_batch,
+                spatial_options={'heads': int(spatial_cfg.get('heads', 8))}) for k in range(S)]
+        else:
+            critics = [build_critic(dataclasses.replace(gan, seed=gan.seed + k), store, names,
+                                    joint=getattr(cfg, "joint", True), device=device)
+                       for k in range(S)]
         logger.info("[zimage] %d critics (one per step): heads %s | %.1f M params each | weight %g "
                     "(%s) | %s loss | lr %g | generator term from step %d", S, critics[0].names,
                     sum(p.numel() for p in critics[0].critic.parameters()) / 1e6, gan.weight,
@@ -203,7 +214,22 @@ def build_trainer(cfg, device: str = "cuda") -> MultiStepTrainer:
     lr_schedule = lr_schedule_from_config(cfg)
     cache_cfg = cache_from_config(cfg)
     params = [p for p in model.parameters() if p.requires_grad]
-    return MultiStepTrainer(
+    trainer_class, extra = MultiStepTrainer, {}
+    if spatial_enabled:
+        from rdm.representation.spatial_battery import SpatialBattery
+        from rdm.sw_lmmd.reference_images import ReferenceImageStore
+        from .spatial_trainer import SpatialMultiStepTrainer
+        from pathlib import Path
+        images_path = spatial_cfg.get('reference_images',
+                                      str(Path(cfg.reference_root).parent/'reference_images_patchgan'))
+        real_images = ReferenceImageStore(images_path)
+        extra = {'reference_images': real_images,
+                 'spatial_battery': SpatialBattery(
+                     device=device, qwen_snapshot=spatial_cfg.get('qwen_snapshot'),
+                     max_real_rows=int(spatial_cfg.get('real_cache_rows', window.size)),
+                     micro_batch=policy.micro_batch)}
+        trainer_class = SpatialMultiStepTrainer
+    return trainer_class(
         generator, battery, store, schedule, build_optimizer(params, cfg, policy),
         encoders=names, num_steps=S, step_weights=student["step_weights"], critics=critics,
         feature_pool=feature_pool, use_store_context=use_store_context,
@@ -214,7 +240,7 @@ def build_trainer(cfg, device: str = "cuda") -> MultiStepTrainer:
         kernel_block=int(_block(cfg, "loss").get("kernel_block_size", 256)),
         seed=getattr(cfg, "seed", 0), joint=getattr(cfg, "joint", True),
         grad_reduce=policy.grad_reduce, monitor_every=getattr(cfg, "monitor_every", 1),
-        cache_cfg=cache_cfg, clip_module=clip_module, device=device, lr_schedule=lr_schedule)
+        cache_cfg=cache_cfg, clip_module=clip_module, device=device, lr_schedule=lr_schedule, **extra)
 
 
 def main() -> None:

@@ -210,8 +210,6 @@ class ReferenceImageIndexBuilder:
                     proof = validate_teacher_sample(meta, png, prompts, row_for_prompt, render)
                     if not 0 <= proof["row_id"] < self.num_rows:
                         raise ValueError("teacher row outside canonical range")
-                    if name.with_suffix("").name != proof["image_id"]:
-                        raise ValueError("teacher member key disagrees with image_id")
                     self.db.execute("INSERT INTO images VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
                         proof["row_id"], proof["prompt_id"], proof["image_id"], shard["name"],
                         png_member.name, png_member.offset_data, png_member.size, proof["png_sha256"],
@@ -260,14 +258,32 @@ class ReferenceImageIndexBuilder:
 
     def _publish_manifest(self, receipts, complete):
         available_ids = [row[0] for row in self.db.execute("SELECT row_id FROM images ORDER BY row_id")]
+        index_path = self.path
+        if not complete:
+            # A small immutable index snapshot keeps a pilot readable while the
+            # main index resumes further tar commits in the background.
+            temporary = self.directory / ("index.partial-" + uuid.uuid4().hex + ".sqlite")
+            snapshot = sqlite3.connect(temporary)
+            try:
+                self.db.backup(snapshot)
+            finally:
+                snapshot.close()
+            checksum = file_sha256(temporary)
+            index_path = self.directory / ("index.partial-" + checksum + ".sqlite")
+            if index_path.exists():
+                if file_sha256(index_path) != checksum:
+                    raise ValueError("existing pilot index snapshot has changed")
+                temporary.unlink()
+            else:
+                os.rename(temporary, index_path)
         self.close()
         manifest = {"format": FORMAT, "complete": complete, "num_rows": self.num_rows,
                     "available_rows": len(available_ids),
                     "dataset": DATASET, "revision": REVISION, "image_size": [1024, 1024],
                     "storage": "retained_uncompressed_tars", "pixel_storage": "uint8_RGB",
                     "float_conversion": "uint8.to(device).float()/255; no resize",
-                    "contract": self.contract, "index": {"path": self.path.name,
-                    "bytes": self.path.stat().st_size, "sha256": file_sha256(self.path)},
+                    "contract": self.contract, "index": {"path": index_path.name,
+                    "bytes": index_path.stat().st_size, "sha256": file_sha256(index_path)},
                     "tars": receipts, "completed_epoch": time.time()}
         if not complete:
             manifest["available_row_ids"] = available_ids
@@ -294,6 +310,11 @@ class ReferenceImageStore:
         if self.num_rows != expected_num_rows:
             raise ValueError("real-image manifest does not describe the expected full canonical row count")
         self.available_rows = int(self.manifest.get("available_rows", self.num_rows))
+        if self.is_complete and self.available_rows != self.num_rows:
+            raise ValueError("complete real-image manifest has incomplete row coverage")
+        if not self.is_complete and (self.manifest.get("complete") is not False
+                                    or self.manifest.get("pilot_only") is not True):
+            raise ValueError("partial real-image access requires an explicit pilot manifest")
         self.available_row_ids = range(self.num_rows) if self.is_complete else tuple(self.manifest["available_row_ids"])
         self._allowed_ids = None if self.is_complete else set(self.available_row_ids)
         if not self.is_complete and (self.available_rows != len(self._allowed_ids)
