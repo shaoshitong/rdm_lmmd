@@ -44,6 +44,8 @@ for pid in "$ref_pid" "$models_pid" "$env_pid"; do
   wait "$pid" || failed=1
 done
 [[ "$failed" == 0 ]] || { echo 'Preparation failed; inspect reference-qwen.log/models.log/environment.log'; exit 10; }
+export PYTHONPATH="$REPO/z-image:$REPO:${PYTHONPATH:-}"
+conda run -n rdm --no-capture-output python ops/h20-assemble-qwen.py
 # --no-train and --no-eval retain only original contexts/Qwen-store preparation.
 bash z-image/scripts/ours_two-cards.sh --root "$ROOT" \
   --config z-image/configs/zimage_2step_1024_dlr1e-4_qwen.yaml \

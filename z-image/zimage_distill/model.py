@@ -75,7 +75,7 @@ class ZImageStudent(nn.Module):
 
     def __init__(self, image_resolution: int = 1024, repo: str = ZIMAGE_REPO,
                  param_dtype: torch.dtype = torch.float32, gradient_checkpointing: bool = True,
-                 transformer: nn.Module | None = None):
+                 transformer: nn.Module | None = None, attention_backend: str | None = None):
         """``transformer``: a prebuilt model to wrap instead of loading Z-Image-Turbo (tests)."""
         super().__init__()
         if image_resolution % (2 * VAE_DOWNSAMPLE):
@@ -86,6 +86,11 @@ class ZImageStudent(nn.Module):
             logger.info("[zimage] loading transformer from %s", path)
             transformer = ZImageTransformer2DModel.from_pretrained(path, torch_dtype=param_dtype)
         self.transformer = transformer.to(dtype=param_dtype)
+        if attention_backend is not None:
+            # Varlen FA3 preserves the padding mask when prompts in a micro-batch have
+            # different token lengths. The fixed-length FA3 backend rejects this mask.
+            self.transformer.set_attention_backend(attention_backend)
+            logger.info("[zimage] transformer attention backend: %s", attention_backend)
         if gradient_checkpointing:
             self.transformer.enable_gradient_checkpointing()
         self.image_resolution = int(image_resolution)
