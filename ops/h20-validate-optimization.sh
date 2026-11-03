@@ -29,7 +29,7 @@ cd "$REPO"
 conda run -n rdm --no-capture-output python ops/h20-assemble-qwen.py
 conda run -n rdm --no-capture-output python -m pytest \
   z-image/tests/test_zimage_multistep.py z-image/tests/test_qwen_text_store.py -q
-conda run -n rdm --no-capture-output python -m pip install 'kernels==0.11.0'
+conda run -n rdm --no-capture-output python -m pip install 'kernels==0.12.0'
 exec 9>/data/shaoshitong/rdm-run.lock
 flock -n 9 || { echo 'Another experiment holds the run lock'; exit 22; }
 python3 - <<'PY'
