@@ -1,5 +1,6 @@
 """Bounded independent GPU4/5 capacity/throughput search; never launch formal A/B."""
 import datetime as dt
+import argparse
 import json
 import math
 import os
@@ -9,6 +10,9 @@ import subprocess
 import time
 
 ROOT = Path('/data/shaoshitong/rdm-sets')
+parser = argparse.ArgumentParser()
+parser.add_argument('--resume-summary', type=Path)
+args = parser.parse_args()
 REPO = Path(__file__).resolve().parents[1]
 STAMP = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
 OUT = ROOT / 'control/checkpoint-sweep' / STAMP
@@ -18,6 +22,14 @@ state = {'started_utc': STAMP, 'source': str(REPO),
          'source_commit': (REPO / 'SOURCE_COMMIT').read_text().strip(),
          'output': str(OUT), 'global_batch': 32, 'physical_gpus': [4, 5],
          'formal_training_started': False, 'status': 'running', 'cases': []}
+
+
+def terminate(signum, frame):
+    # Convert TERM to an exception so an active test's finally cleanup runs.
+    raise SystemExit(f'Controller received signal {signum}')
+
+
+signal.signal(signal.SIGTERM, terminate)
 
 
 def publish():
@@ -166,10 +178,23 @@ def run_case(group, micro, iterations=2, label=None):
 
 
 try:
+    if args.resume_summary:
+        previous = json.loads(args.resume_summary.read_text())
+        for item in previous['cases']:
+            if item['status'] == 'passed':
+                record = json.loads(Path(item['result']).read_text())
+                require_finite(record)
+                assert len(record['steps']) >= 2 and record['probe_refresh'] is not None
+                assert all(not rank['logs']['skipped'] for step in record['steps'] for rank in step)
+                reused = dict(item, reused_from=str(args.resume_summary))
+                state['cases'].append(reused)
     publish()
     # Requested pair checkpointing first. Every successful point also exercises probe/refresh.
     for group, batches in [(2, [2, 4, 8, 16]), (1, [4, 8, 16]), (0, [1, 2, 4, 8, 16])]:
         for micro in batches:
+            if any(x['group_size'] == group and x['micro_batch'] == micro and
+                   x['status'] == 'passed' for x in state['cases']):
+                continue
             point = run_case(group, micro, iterations=3 if (group, micro) == (2, 2) else 2)
             if point['status'] == 'oom':
                 break

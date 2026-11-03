@@ -29,7 +29,8 @@ def process_info(pid):
         argv = (p / 'cmdline').read_bytes().split(b'\0')[:-1]
         stat = (p / 'stat').read_text().split(') ', 1)[1].split()
         return {'pid': int(pid), 'start_ticks': int(stat[19]),
-                'argv': [os.fsdecode(a) for a in argv], 'state': stat[0]}
+                'argv': [os.fsdecode(a) for a in argv], 'state': stat[0],
+                'cwd': os.readlink(p / 'cwd')}
     except (OSError, ValueError):
         return None
 
@@ -43,7 +44,8 @@ def inventory():
         if not item or item['state'] == 'Z':
             continue
         args = item['argv']
-        if CONTROLLER in args:
+        if any(a.endswith('ops/h20-checkpoint-sweep.py') and
+               (Path(item['cwd']) / a).resolve() == Path(CONTROLLER).resolve() for a in args):
             controllers.append(item)
         if ENTRY not in args or '--out-dir' not in args:
             continue
@@ -71,14 +73,30 @@ def stop_owned(item, sig):
 
 
 events = []
+confirmed_controller = None
+confirmation_deadline = time.monotonic() + 30
 while True:
     controllers, parents, workers = inventory()
-    parent_cases = {x['case'] for x in parents}
-    orphans = [w for w in workers if w['case'] not in parent_cases]
-    targets = parents + workers if not controllers else orphans
+    if confirmed_controller is None:
+        if len(controllers) == 1:
+            confirmed_controller = (controllers[0]['pid'], controllers[0]['start_ticks'])
+        elif time.monotonic() >= confirmation_deadline:
+            raise RuntimeError('Controller identity was never confirmed; refusing any cleanup')
+        else:
+            time.sleep(1)
+            continue
+    # A transient argv/read failure is not proof of exit. Only the kernel's PID,
+    # start ticks and zombie state establish that the confirmed owner is gone.
+    owner = process_info(confirmed_controller[0])
+    if owner is None and (Path('/proc') / str(confirmed_controller[0])).exists():
+        time.sleep(1)
+        continue
+    owner_alive = owner is not None and owner['start_ticks'] == confirmed_controller[1] and owner['state'] != 'Z'
+    controllers = [owner] if owner_alive else []
+    targets = [] if owner_alive else parents + workers
     if targets:
         event = {'utc': dt.datetime.now(dt.timezone.utc).isoformat(),
-                 'reason': 'controller exited' if not controllers else 'elastic parent exited',
+                 'reason': 'confirmed controller PID exited',
                  'targets': [{k: x[k] for k in ('pid', 'start_ticks', 'case')} for x in targets]}
         events.append(event)
         for target in targets:

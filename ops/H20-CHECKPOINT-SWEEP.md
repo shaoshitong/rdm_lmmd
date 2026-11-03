@@ -31,3 +31,12 @@ sequence/allocator pattern will fit. Formal training remains off pending the use
 
 Status: `/data/shaoshitong/rdm-sets/control/checkpoint-sweep-latest.json`.
 Per-case logs/results: directory named by its `output` field. Entry: `ops/h20-run-checkpoint-sweep.sh`.
+
+The initial external guard was retired after it misidentified a relative-path controller
+and interrupted micro4 after two complete updates but before refresh. Its failure logs remain
+under the first scan directory. It is not started by the launcher. The current controller
+handles TERM/errors/timeouts in-process and cleans exact owned descendants, including ranks
+with independent sessions. Successful earlier cases can be reused via `--resume-summary`;
+partial or failed cases are never admitted as passed. Probe/refresh values must also be finite,
+and a repeated winner must satisfy the5% margin. BF16/FP32 two-rank parity diagnostics (four
+accumulated micros, with and without shared conditioning) passed with zero gradient error.

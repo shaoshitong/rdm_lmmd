@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-REPO=/data/shaoshitong/RDM-qwen-perf
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT=/data/shaoshitong/rdm-sets
 source "$REPO/ops/h20-data-env.sh"
 source "$ROOT/env.sh"
@@ -28,4 +28,4 @@ cd "$REPO"
   z-image/tests/test_zimage_multistep.py z-image/tests/test_qwen_text_store.py -q
 "$ROOT/envs/rdm/bin/torchrun" --nproc_per_node=2 --master_port=29541 \
   ops/h20-checkpoint-parity.py --out "$ROOT/control/checkpoint-fsdp-parity.json"
-"$ROOT/envs/rdm/bin/python" ops/h20-checkpoint-sweep.py
+"$ROOT/envs/rdm/bin/python" ops/h20-checkpoint-sweep.py "$@"

@@ -109,7 +109,7 @@ def run_mode(mode: str, state: dict, keys: list[str], local_rank: int, rank: int
     torch.manual_seed(902 + rank)
     torch.cuda.manual_seed(902 + rank)
     dist.barrier()
-    outputs, input_gradients, losses, norms_per_micro = [], [], [], []
+    outputs, input_gradients, losses, norms_per_micro, fsdp_norms_per_micro = [], [], [], [], []
     input_dtype = torch.bfloat16 if args.mixed_precision else torch.float32
     for _ in range(args.micro_batches):
         x = torch.randn(2, 7, 32, generator=g).to(device=local_rank, dtype=input_dtype).requires_grad_()
@@ -130,6 +130,9 @@ def run_mode(mode: str, state: dict, keys: list[str], local_rank: int, rank: int
         total_energy = torch.tensor(energy, dtype=torch.float64, device=local_rank)
         dist.all_reduce(total_energy)
         norms_per_micro.append(float(total_energy.sqrt()))
+        # Infinite max_norm leaves gradients unchanged. Record the same FSDP norm API
+        # as real training separately from the direct double-precision shard reduction.
+        fsdp_norms_per_micro.append(float(model.clip_grad_norm_(float('inf'))))
     gradients = {}
     for name, parameter in model.named_parameters():
         gradient = parameter.grad
@@ -142,6 +145,7 @@ def run_mode(mode: str, state: dict, keys: list[str], local_rank: int, rank: int
         'mode': mode, 'output': torch.cat(outputs),
         'input_gradient': torch.cat(input_gradients), 'gradients': gradients,
         'block_calls': calls, 'loss': sum(losses), 'global_grad_norm_after_each_micro': norms_per_micro,
+        'fsdp_reported_grad_norm_after_each_micro': fsdp_norms_per_micro,
         'local_gradient_energy': gradient_energy(gradients),
         'gradient_dtypes': sorted({str(g.dtype) for g in gradients.values() if g is not None}),
     }
@@ -179,6 +183,8 @@ def compare_results(actual, reference, args) -> dict:
         'gradient_dtypes': actual['gradient_dtypes'],
         'actual_global_grad_norm_after_each_micro': actual['global_grad_norm_after_each_micro'],
         'reference_global_grad_norm_after_each_micro': reference['global_grad_norm_after_each_micro'],
+        'actual_fsdp_reported_grad_norm_after_each_micro': actual['fsdp_reported_grad_norm_after_each_micro'],
+        'reference_fsdp_reported_grad_norm_after_each_micro': reference['fsdp_reported_grad_norm_after_each_micro'],
         'passed': output['allclose'] and input_gradient['allclose']
                   and all(row['allclose'] for row in parameter_differences),
     }
