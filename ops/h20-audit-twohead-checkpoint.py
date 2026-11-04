@@ -11,11 +11,11 @@ import sys
 import time
 
 ROOT = Path('/data/shaoshitong/rdm-sets')
-TRAIN_SOURCE = Path('/data/shaoshitong/RDM-twohead-lr10-v1')
-TRAIN_SHA = 'a25e4c42794b13d5c881d3f1994944929b019190'
+TRAIN_SOURCE = Path(os.environ.get('H20_TRAIN_SOURCE','/data/shaoshitong/RDM-twohead-lr10-v1'))
+TRAIN_SHA = os.environ.get('H20_TRAIN_SHA','a25e4c42794b13d5c881d3f1994944929b019190')
 EXP = ROOT/'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A'
 HEADS = ['dinov3_l', 'qwen3vl_4b']
-PREFIX = 'twohead-lr10-A-500'
+PREFIX = os.environ.get('H20_CONTROL_PREFIX','twohead-lr10-A-500')
 
 
 def check(condition, message):
@@ -43,12 +43,18 @@ def audit(args):
     if args.full or args.student:
         check(args.step == 500 and exit_code == '0', 'Full scans/student audit require actual clean500 exit')
     path = (Path(args.file) if args.file else EXP/('step_0000500.pth' if args.student else 'resume.pth')).resolve(strict=True)
-    check(path.is_relative_to(ROOT.resolve()), 'Checkpoint must remain under remote ROOT')
+    archive_proof = None
+    if not path.is_relative_to(ROOT.resolve()):
+        archive_root = Path('/mnt/airs-business/shaoshitong/rdm-sets/checkpoints')
+        check(args.student and path.is_relative_to(archive_root), 'Checkpoint escapes authorized remote storage')
+        archive_proof = json.loads((control/'twohead-retain50-archive'/f'checkpoint-archive-{args.step}.json').read_text())
+        check(archive_proof['passed'] and Path(archive_proof['destination']).resolve()==path,
+              'Archived student lacks its matching successful receipt')
     before = path.stat()
     check(before.st_size > 24_000_000_000, 'Checkpoint is too small for the full student')
     check(before.st_mtime >= command['created_epoch'], 'Checkpoint predates the current formal run')
     log = (ROOT/'launch-logs'/(PREFIX+'.log')).read_text(errors='replace')
-    marker = ('checkpoint -> '+str(path)) if args.student else ('resume state (step '+str(args.step)+')')
+    marker = ('checkpoint -> '+str(EXP/path.name)) if args.student else ('resume state (step '+str(args.step)+')')
     check(marker in log, 'No actual save-completion log for this artifact/step')
     state = torch.load(path, map_location='cpu', weights_only=False, mmap=True)
     check(state['step'] == args.step, 'Payload step differs from requested step')
@@ -155,6 +161,9 @@ def audit(args):
     after = path.stat()
     check((before.st_ino, before.st_size, before.st_mtime_ns) ==
           (after.st_ino, after.st_size, after.st_mtime_ns), 'File replaced during audit; re-observe same run')
+    if archive_proof is not None:
+        check(before.st_size==archive_proof['bytes'] and digest==archive_proof['sha256'],
+              'Final archived bytes/SHA differ from the verified saved student')
     return {'passed': True, 'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
             'scope': 'final-full-integrity' if args.full else 'metadata-only-no-weight-value-scan',
             'path': str(path), 'bytes': before.st_size, 'mtime_ns': before.st_mtime_ns,

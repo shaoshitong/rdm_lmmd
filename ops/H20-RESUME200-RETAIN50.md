@@ -43,9 +43,23 @@ existing FSDP guard requires `load_from == resume_from`. The corrected v2 entry
 passes both paths, keeps that failed attempt's logs, and reuses its already-running
 verified-destination archiver instead of launching a duplicate copy job.
 
-Logs: `launch-logs/twohead-lr10-resume200-500-v2.log`,
+A redundant tiny mount probe in the v2 preflight hit temporary ENOSPC while the
+200 object was being archived. No new training iteration executed. After200 had
+completed a full24.62GB verified archive and a fresh tiny probe passed, v3 uses
+that stronger actual-archive receipt instead of repeating the redundant write.
+`h20-verify-archived-weights.py` independently reads every final-named200..500 object
+and checks its full SHA as well, with byte-progress and true-exit receipts.
+
+Logs: `launch-logs/twohead-lr10-resume200-500-v3.log`,
 `launch-logs/twohead-retain50-archive.log`.
-True exits: `control/twohead-lr10-resume200-500-v2.exit`,
+True exits: `control/twohead-lr10-resume200-500-v3.exit`,
 `control/twohead-retain50-archive/checkpoint-archive-worker.exit`.
 Per-stage byte/SHA receipts: `control/twohead-retain50-archive/checkpoint-archive-N.json`.
 All weights remain remote; Mac receives only source/docs and small audit summaries.
+
+Read-only observer/auditor and portrait followers bind the resumed segment using
+`H20_CONTROL_PREFIX`, `H20_TRAIN_SOURCE`, `H20_TRAIN_SHA` and the separate
+`H20_PORTRAIT_FOLLOW_PREFIX`. Old signal exits and the failed startup remain in
+their original logs. Cumulative iteration/counter checks still cover the single
+continuous1..500 scalar log. The final student auditor accepts the authorized
+object-store path only with its exact per-step archive receipt and full SHA match.

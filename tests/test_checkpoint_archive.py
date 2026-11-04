@@ -56,3 +56,13 @@ def test_low_space_with_dead_archiver_stops_before_write(tmp_path):
     with mock.patch.object(archive_module.shutil, 'disk_usage', return_value=mock.Mock(free=10)):
         with pytest.raises(RuntimeError, match='Archive worker exited'):
             wait_for_space(tmp_path, 100, exitfile)
+
+
+def test_failed_remote_flush_preserves_source(tmp_path):
+    source = tmp_path/'step_0000350.pth'; source.write_bytes(b'only-unique-model')
+    with mock.patch.object(archive_module.os, 'fsync', side_effect=OSError(28, 'No space left on device')):
+        with pytest.raises(OSError):
+            archive_checkpoint(source, tmp_path/'archive', tmp_path/'proof.json', validator)
+    assert source.read_bytes() == b'only-unique-model'
+    assert not (tmp_path/'archive'/source.name).exists()
+    assert not (tmp_path/'proof.json').exists()

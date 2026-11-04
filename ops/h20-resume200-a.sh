@@ -6,7 +6,7 @@ CONFIG=z-image/configs/zimage_2step_1024_twohead_glr10_h20_fa3.yaml
 EXP="$ROOT/zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A"
 ARCHIVE=/mnt/airs-business/shaoshitong/rdm-sets/checkpoints/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A
 ARCHIVE_CONTROL="$ROOT/control/twohead-retain50-archive"
-PREFIX=twohead-lr10-resume200-500-v2
+PREFIX=twohead-lr10-resume200-500-v3
 mkdir -p "$ROOT/control" "$ROOT/launch-logs" "$ARCHIVE_CONTROL"
 exec >>"$ROOT/launch-logs/$PREFIX.log" 2>&1
 RUN_DIR="$ROOT/control/$PREFIX-runs/$(date -u +%Y%m%dT%H%M%SZ)-$$"
@@ -72,7 +72,12 @@ for subtree in ['rdm','z-image/zimage_distill']:
   assert p.read_bytes()==(repo/relative).read_bytes(), 'Algorithm change outside saving:'+str(relative)
 assert str(exp.resolve()).startswith(str(root)+'/' ) and str(archive).startswith('/mnt/airs-business/shaoshitong/rdm-sets/checkpoints/')
 archive.mkdir(parents=True,exist_ok=True)
-probe=archive/'resume200-write-test.json';probe.write_text('{"passed":true}\n');assert json.loads(probe.read_text())['passed']
+archive_proof=archive_control/'checkpoint-archive-200.json'
+if archive_proof.exists():
+ saved=json.loads(archive_proof.read_text())
+ assert saved['passed'] and pathlib.Path(saved['destination']).stat().st_size==saved['bytes']
+else:
+ probe=archive/'resume200-write-test.json';probe.write_text('{"passed":true}\n');assert json.loads(probe.read_text())['passed']
 sys.path.insert(0,str(repo/'ops'))
 from h20_benchmark_acceptance import wait_for_idle_gpus
 def read_gpus():

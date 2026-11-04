@@ -2,7 +2,7 @@
 set -euo pipefail
 ROOT=/data/shaoshitong/rdm-sets
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-PREFIX=twohead-qib-portraits-follow
+PREFIX="${H20_PORTRAIT_FOLLOW_PREFIX:-twohead-qib-portraits-follow}"
 mkdir -p "$ROOT/control" "$ROOT/launch-logs"
 exec >>"$ROOT/launch-logs/$PREFIX.log" 2>&1
 trap 'rc=$?; trap - EXIT; printf "%s\n" "$rc" >"$ROOT/control/$PREFIX.exit"; printf "portrait_follow_exit=%s utc=%s\n" "$rc" "$(date -u +%FT%TZ)"; exit "$rc"' EXIT

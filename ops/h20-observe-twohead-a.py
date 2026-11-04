@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Read-only one-shot observer for the bound two-head A run; no Torch/GPU kernels."""
 import pathlib,json,subprocess,datetime,math,os
-root=pathlib.Path('/data/shaoshitong/rdm-sets');control=root/'control';prefix='twohead-lr10-A-500';source=pathlib.Path('/data/shaoshitong/RDM-twohead-lr10-v1')
+root=pathlib.Path('/data/shaoshitong/rdm-sets');control=root/'control'
+prefix=os.environ.get('H20_CONTROL_PREFIX','twohead-lr10-A-500')
+source=pathlib.Path(os.environ.get('H20_TRAIN_SOURCE','/data/shaoshitong/RDM-twohead-lr10-v1'))
 exp=root/'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A'
 def read(p):
  return p.read_text().strip() if p.exists() else None
@@ -20,7 +22,12 @@ def nonfinite(v):
  return int(isinstance(v,float) and not math.isfinite(v))
 log=root/'launch-logs'/ (prefix+'.log');lines=log.read_text(errors='replace').splitlines() if log.exists() else []
 errors=[l for l in lines if any(k in l for k in ['Traceback (most recent','CUDA out of memory','ChildFailedError','SignalException','[rank0]: RuntimeError','[rank1]: RuntimeError'])]
-saves=[l for l in lines if any(k in l for k in ['Saved resume','Saved student','Saved checkpoint','saved resume','saved student','resume.pth','step_0000500.pth']) and 'formal_A_output_preflight' not in l]
+save_lines=lines
+handoff=control/'twohead-resume200-stop-verified.json'
+if prefix!='twohead-lr10-A-500' and handoff.exists() and json.loads(handoff.read_text()).get('passed'):
+ prior=root/'launch-logs/twohead-lr10-A-500.log'
+ save_lines=(prior.read_text(errors='replace').splitlines() if prior.exists() else [])+lines
+saves=[l for l in save_lines if any(k in l for k in ['Saved resume','Saved student','Saved checkpoint','saved resume','saved student','resume state (step','checkpoint ->']) and 'formal_A_output_preflight' not in l]
 stats={}
 for name in ['resume.pth','step_0000500.pth']:
  f=exp/name
@@ -35,4 +42,14 @@ out={'probe_history':probe_history[-4:],'probe_steps':[r['step'] for r in probe_
 for name in ['command.json','preflight.json']:
  p=control/(prefix+'.'+name)
  out[name]=json.loads(p.read_text()) if p.exists() else None
+archive_control=control/'twohead-retain50-archive'
+progress=archive_control/'checkpoint-archive-progress.json'
+out['checkpoint_archive_progress']=json.loads(progress.read_text()) if progress.exists() else None
+out['checkpoint_archive_exit']=read(archive_control/'checkpoint-archive-worker.exit')
+out['archived_weights']={}
+for step in range(200,501,50):
+ p=archive_control/f'checkpoint-archive-{step}.json'
+ if p.exists():
+  proof=json.loads(p.read_text());target=pathlib.Path(proof['destination'])
+  out['archived_weights'][str(step)]=dict(proof,destination_exists=target.exists(),current_bytes=target.stat().st_size if target.exists() else None)
 print(json.dumps(out,ensure_ascii=False))

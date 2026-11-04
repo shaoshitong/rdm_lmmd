@@ -16,10 +16,11 @@ if [[ -f "$ROOT/control/$PREFIX.pid" ]]; then
   if kill -0 "$previous" 2>/dev/null; then echo 'Portrait preview already active'; exit 4; fi
 fi
 printf '%s\n' "$$" >"$ROOT/control/$PREFIX.pid"
-source /data/shaoshitong/RDM-twohead-lr10-v1/ops/h20-data-env.sh
+TRAIN_SOURCE="${H20_TRAIN_SOURCE:-/data/shaoshitong/RDM-twohead-lr10-v1}"
+source "$TRAIN_SOURCE/ops/h20-data-env.sh"
 source "$ROOT/env.sh"
 export CUDA_VISIBLE_DEVICES="$GPU" OMP_NUM_THREADS=2 PYTHONUNBUFFERED=1
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-export PYTHONPATH=/data/shaoshitong/RDM-twohead-lr10-v1/z-image:/data/shaoshitong/RDM-twohead-lr10-v1
-cd /data/shaoshitong/RDM-twohead-lr10-v1
+export PYTHONPATH="$TRAIN_SOURCE/z-image:$TRAIN_SOURCE"
+cd "$TRAIN_SOURCE"
 timeout --signal=TERM --kill-after=30s 1800s "$ROOT/envs/rdm/bin/python" "$REPO/ops/h20-qib-portrait-preview.py" --step "$STEP" --gpu "$GPU" "$@"

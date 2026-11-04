@@ -10,10 +10,12 @@ ROOT = pathlib.Path('/data/shaoshitong/rdm-sets')
 EXPERIMENT = ROOT/'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A'
 OUT = ROOT/'visualizations/twohead-lr10-A/qib-portraits-v1'
 REPO = pathlib.Path(__file__).resolve().parents[1]
+PREFIX = os.environ.get('H20_CONTROL_PREFIX','twohead-lr10-A-500')
+FOLLOW_PREFIX = os.environ.get('H20_PORTRAIT_FOLLOW_PREFIX','twohead-qib-portraits-follow')
 
 
 def write(value):
-    p = ROOT/'control/twohead-qib-portraits-follow-progress.json'
+    p = ROOT/'control'/f'{FOLLOW_PREFIX}-progress.json'
     value['observed_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     tmp = p.with_suffix('.partial'); tmp.write_text(json.dumps(value, indent=2)+'\n'); os.replace(tmp, p)
 
@@ -61,7 +63,7 @@ def main():
                     assert proof['passed'] and len(proof['files']) == 16 and len(proof['native_comparisons']) == 4
                     results.append(dict(step=target, status='verified', images=16)); pending.pop(0)
         write(dict(checkpoint_step=actual, pending=pending, results=results))
-        training_exit = ROOT/'control/twohead-lr10-A-500.exit'
+        training_exit = ROOT/'control'/f'{PREFIX}.exit'
         if pending and training_exit.exists() and training_exit.read_text().strip() != '0':
             raise RuntimeError('Training exited nonzero; portrait follow-up stops without restart')
         if pending:
