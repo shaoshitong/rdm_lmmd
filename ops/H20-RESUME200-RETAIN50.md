@@ -75,3 +75,12 @@ Standalone CPU validators explicitly set `TMPDIR` to the existing remote
 `/data/shaoshitong/rdm-sets/.cache/tmp` before importing Torch, because the node's
 root filesystem has no usable default temporary space. Training already uses that
 explicit remote temp directory; its environment is not changed by this fix.
+
+At250, both training ranks still mapped the unlinked original200 resume inode,
+retaining31.72GB after replacement. The save-space gate correctly waited before
+writing the independent250 student. An inactive24.62GB legacy schema-reference
+weight is therefore moved to a separate `checkpoints/legacy-spatial-A` namespace,
+with full final-object SHA verification, durable exact key/shape/dtype JSON and
+an original-path symlink. The reference is not current twohead150. No current
+training process, optimizer or checkpoint is changed. The auditor uses the verified
+schema JSON so it does not mmap that archived reference through ks3fs.

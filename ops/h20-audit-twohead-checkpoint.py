@@ -79,10 +79,18 @@ def audit(args):
     model = state['model']
     check(len(model) == 521 and sum(v.numel() for v in model.values()) == 6154908736, 'Incomplete model schema')
     baseline_path = control/'spatial-A-user-visualization/step_0000150-model.pth'
-    baseline = torch.load(baseline_path, map_location='cpu', weights_only=False, mmap=True)['model']
-    schema = lambda m: {k: (tuple(v.shape), str(v.dtype)) for k, v in m.items()}
-    check(schema(model) == schema(baseline), 'Model key/shape/dtype schema differs from verified student')
-    del baseline
+    schema = lambda m: {k: {'shape':list(v.shape),'dtype':str(v.dtype)} for k,v in m.items()}
+    schema_path = control/'legacy-baseline150-schema.json'
+    if schema_path.exists():
+        saved_schema=json.loads(schema_path.read_text())
+        offload=json.loads((control/'legacy-baseline-offload.json').read_text())
+        check(saved_schema['passed'] and offload['passed'] and
+              saved_schema['source_archive_sha256']==offload['sha256'], 'Unverified legacy reference schema')
+        check(schema(model)==saved_schema['model_schema'], 'Model schema differs from verified archived reference')
+    else:
+        baseline = torch.load(baseline_path, map_location='cpu', weights_only=False, mmap=True)['model']
+        check(schema(model) == schema(baseline), 'Model key/shape/dtype schema differs from verified student')
+        del baseline
     check(all(v.device.type == 'cpu' for v in model.values()), 'Model must map to CPU')
 
     feature_contract = state['spatial_gan_contract']
