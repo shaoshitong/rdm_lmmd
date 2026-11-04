@@ -44,6 +44,12 @@ command, PID and true exit under `twohead-lr10-A-500`. G optimizer serialization
 retains the existing FSDP limitation; this restart creates a fresh optimizer.
 Models and all full outputs remain remote. No other jobs or GPU6/7 are touched.
 
+When student/resume writes coincide, replace the rolling resume first, then write
+the student. Contents and intervals are unchanged. This frees the previous
+rolling inode before adding the final student, avoiding the extra simultaneous
+disk requirement while retaining all old experiment artifacts. Completion still
+requires both actual step500 payloads and the true clean exit.
+
 `ROOT` means `/data/shaoshitong/rdm-sets`. Verify at least one full real formal
 iteration and a second real observation after launching; the full goal remains
 active until actual500 artifacts and clean exit are audited.
