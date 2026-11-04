@@ -125,6 +125,23 @@ def test_three_actual_two_rank_two_step_dg_updates_pass():
     assert result['all_rank_DG_updates_verified'] and result['complete_iterations'] == 3
 
 
+def test_corrected_two_head_gate_requires_both_real_gan_branches_and_excludes_aim():
+    value = record()
+    value['gan_heads'] = list(_helper.SPATIAL_HEADS[:2])
+    for ranks in value['steps']:
+        for rank in ranks:
+            for key in list(rank['logs']):
+                if '/gan/aimv2_huge/' in key: del rank['logs'][key]
+    _helper.validate_benchmark_record(value, expected_heads=_helper.SPATIAL_HEADS[:2])
+    wrong = copy.deepcopy(value)
+    wrong['steps'][0][0]['logs']['s1/gan/aimv2_huge/d_loss'] = 1.
+    with pytest.raises(ValueError, match='exclude AIM'):
+        _helper.validate_benchmark_record(wrong)
+    del value['steps'][1][1]['logs']['s1/gan/qwen3vl_4b/g_loss']
+    with pytest.raises(ValueError, match='Missing or nonfinite'):
+        _helper.validate_benchmark_record(value)
+
+
 def test_finite_generator_with_skipped_d_is_rejected():
     value = record()
     value['steps'][1][1]['logs']['s2/gan/d_skipped'] = True

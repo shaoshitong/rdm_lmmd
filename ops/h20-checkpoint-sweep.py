@@ -135,7 +135,7 @@ def run_case(group, micro, iterations=2, label=None):
     idle = wait_for_idle_gpus(gpu_state, time.sleep, time.monotonic)
     if any(memory > 32 or utilization != 0 for _, memory, total, utilization in idle):
         raise RuntimeError(f'Selected GPU busy before {name}: {idle}')
-    command = [str(ROOT / 'envs/rdm/bin/torchrun'), '--nproc_per_node=2', '--master_port=29541',
+    command = [str(ROOT / 'envs/rdm/bin/torchrun'), '--standalone', '--nproc_per_node=2',
                str(REPO / 'ops/h20-benchmark.py'), '--backend', '_flash_3_varlen_hub',
                '--micro-batch', str(micro), '--checkpoint-group-size', str(group),
                '--iterations', str(iterations), '--probe-refresh', '--out-dir', str(case_dir)]

@@ -131,3 +131,17 @@ def test_two_head_variants_preserve_three_mmd_streams_and_every_other_setting():
     assert adaptive['exp_name'] != two['exp_name']
     adaptive['exp_name'] = two['exp_name']
     assert adaptive == two, _differences(two, adaptive)
+
+
+def test_latest_generator_lr_tenfold_preserves_corrected_disc_and_all_mmd_settings():
+    base = yaml.safe_load((CONFIGS/'zimage_2step_1024_twohead_patchgan_adaptive_h20_fa3.yaml').read_text())
+    new = yaml.safe_load((CONFIGS/'zimage_2step_1024_twohead_glr10_h20_fa3.yaml').read_text())
+    assert new['lr'] == pytest.approx(2.83e-5)
+    assert new['gan']['lr'] == pytest.approx(1e-5)
+    assert new['spatial_gan']['global_gan_encoders'] == []
+    assert new['encoders'] == GLOBAL_ENCODERS
+    assert new['adaptive_d_lr']['enabled'] is True
+    assert new['grad_clip'] == 4.
+    assert new['exp_name'] != base['exp_name']
+    new['exp_name'],new['lr'] = base['exp_name'],base['lr']
+    assert new == base, _differences(base,new)

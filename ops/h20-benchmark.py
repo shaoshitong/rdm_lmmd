@@ -46,6 +46,9 @@ cfg.zimage['checkpoint_group_size'] = max(1, a.checkpoint_group_size)
 cfg.gan['g_start_step'] = 0
 device = f'cuda:{local_rank}'
 trainer = build_trainer(cfg, device=device)
+gan_heads = list(trainer.step_critics[0].names) if spatial_enabled else None
+if spatial_enabled:
+    assert all(list(c.names)==gan_heads for c in trainer.step_critics)
 trainer.bootstrap()
 dist.barrier()
 rows = []
@@ -64,7 +67,8 @@ for i in range(a.iterations):
     if spatial_enabled:
         row.update(critic_updates_before=critic_updates_before, critic_updates_after=critic_updates_after)
     try:
-        validate_step_record(row, spatial=spatial_enabled, generation_steps=trainer.num_steps)
+        validate_step_record(row, spatial=spatial_enabled, generation_steps=trainer.num_steps,
+                             spatial_heads=gan_heads or ())
     except ValueError as error:
         print(json.dumps({'event': 'iteration_gate_failed', 'rank': rank,
                           'error': str(error), 'row': row}, default=str), flush=True)
@@ -112,6 +116,12 @@ if rank == 0:
               'global_batch': 32, 'generator_gan_active': True, 'steps': rows,
               'probe_refresh': extra, 'probe_refresh_contract': probe_contract, 'spatial_patchgan': spatial_enabled,
               'generation_steps': trainer.num_steps, 'world_size': world,
+              'gan_heads': gan_heads,
+              'spatial_feature_contract': getattr(trainer, 'spatial_contract', None),
+              'source_commit': (Path(__file__).resolve().parents[1]/'SOURCE_COMMIT').read_text().strip(),
+              'config': str(Path(a.config).resolve()),
+              'G_base_lr': float(cfg.lr), 'D_base_lr': float(cfg.gan['lr']),
+              'adaptive_D_lr': bool(getattr(cfg, 'adaptive_d_lr', {}).get('enabled', False)),
               'formal_training_started': False,
               'bounded_test_overrides': {'gan.g_start_step': {'configured': configured_g_start, 'actual': 0}}}
     try:

@@ -349,6 +349,43 @@ def test_enabled_controller_uses_real_losses_and_preserves_mmd_generator_and_res
         build(store_root, gan_loss='ns', global_gan=global_gan).load_state_dict(snapshot)
 
 
+def test_two_head_disc_encodes_both_real_and_generated_pixels_in_both_backbones(store_root):
+    trainer = build(store_root, gan_loss='ns', global_gan=())
+    trainer.bootstrap()
+    seen = {name: [] for name in SPECS}
+    handles = []
+    reference_call = [False]
+    original_reference = trainer.spatial_battery.reference_features
+    def trace_reference(*args, **kwargs):
+        reference_call[0] = True
+        try: return original_reference(*args, **kwargs)
+        finally: reference_call[0] = False
+    trainer.spatial_battery.reference_features = trace_reference
+    for name,encoder in trainer.spatial_battery.encoders.items():
+        def capture(module, args, key=name):
+            seen[key].append((reference_call[0], args[0].detach().clone()))
+        handles.append(encoder.register_forward_pre_hook(capture))
+    expected = trainer.reference_images.png[trainer._pending_window.all_ids].float()/255
+    logs = trainer.step()
+    for handle in handles: handle.remove()
+    assert [c.names for c in trainer.step_critics] == [['dinov3_l','qwen3vl_4b']]*2
+    assert trainer.base_names == list(NAMES)
+    for name,records in seen.items():
+        real = torch.cat([pixels for is_real,pixels in records if is_real])
+        assert real.shape == expected.shape
+        # Reference rows are the canonical PNG pixels, not stored global vectors.
+        torch.testing.assert_close(real, expected, rtol=0, atol=0)
+        assert any(not is_real for is_real,_ in records), name
+    assert len(seen['dinov3_l']) == len(seen['qwen3vl_4b'])
+    for left,right in zip(seen['dinov3_l'],seen['qwen3vl_4b']):
+        assert left[0] == right[0]
+        torch.testing.assert_close(left[1],right[1],rtol=0,atol=0)
+    assert not any('/gan/aimv2_huge/' in key for key in logs)
+    for k in [1,2]:
+        for name in SPECS: assert logs[f's{k}/gan/{name}/d_grad_norm'] > 0
+        for name in NAMES: assert f's{k}/{name}/mmd2' in logs
+
+
 @pytest.mark.parametrize('micro,critic_micro', [(1, 1), (4, 3)])
 def test_microbatch_and_critic_only_warmup(store_root, micro, critic_micro):
     trainer = build(store_root, micro=micro, critic_micro=critic_micro, warmup=1)

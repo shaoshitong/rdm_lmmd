@@ -84,13 +84,17 @@ def _counts(value, generation_steps, name):
     return value
 
 
-def validate_step_record(row, *, spatial=False, generation_steps=2):
+def validate_step_record(row, *, spatial=False, generation_steps=2, spatial_heads=SPATIAL_HEADS):
     """Require finite completed G, and actual D/G activity for spatial Page acceptance."""
     _finite_tree(row)
     logs = row.get('logs', {})
     _require(logs.get('skipped') is False, 'Generator update was skipped or not recorded')
     if not spatial:
         return
+    spatial_heads = tuple(spatial_heads)
+    _require(spatial_heads in (SPATIAL_HEADS, SPATIAL_HEADS[:2]), 'Unexpected GAN head contract')
+    if spatial_heads == SPATIAL_HEADS[:2]:
+        _require(not any('/gan/aimv2_huge/' in key for key in logs), 'Two-head GAN must exclude AIM GAN metrics')
     before = _counts(row.get('critic_updates_before'), generation_steps, 'critic_updates_before')
     after = _counts(row.get('critic_updates_after'), generation_steps, 'critic_updates_after')
     _number(logs, 'grad_norm', positive=True)
@@ -106,7 +110,7 @@ def validate_step_record(row, *, spatial=False, generation_steps=2):
             _number(logs, prefix + name, positive=True)
         for name in ('gan/d_loss', 'gan/g_loss'):
             _number(logs, prefix + name)
-        for head in SPATIAL_HEADS:
+        for head in spatial_heads:
             _number(logs, prefix + f'gan/{head}/d_grad_norm', positive=True)
             for kind in ('d_loss', 'g_loss'):
                 _number(logs, prefix + f'gan/{head}/{kind}')
@@ -114,7 +118,7 @@ def validate_step_record(row, *, spatial=False, generation_steps=2):
 
 def validate_benchmark_record(record, *, expected_spatial=None, expected_iterations=None,
                               require_probe_refresh=True, expected_probe_request=None,
-                              expected_retained_rows=None):
+                              expected_retained_rows=None, expected_heads=None):
     """Validate every rank/iteration and counter continuity, preserving old nonspatial files."""
     _finite_tree(record)
     spatial = record.get('spatial_patchgan', False)
@@ -126,6 +130,9 @@ def validate_benchmark_record(record, *, expected_spatial=None, expected_iterati
     if expected_iterations is not None:
         _require(len(steps) == expected_iterations, 'Benchmark iteration count differs from the request')
     generation_steps = record.get('generation_steps', 2)
+    spatial_heads = tuple(record.get('gan_heads') or SPATIAL_HEADS)
+    if expected_heads is not None:
+        _require(spatial_heads == tuple(expected_heads), 'Executed GAN heads differ from expected heads')
     if spatial:
         _require(generation_steps == 2, 'Page acceptance requires two generation steps')
         _require(len(steps) >= 3, 'Spatial acceptance requires at least three complete D/G iterations')
@@ -140,7 +147,8 @@ def validate_benchmark_record(record, *, expected_spatial=None, expected_iterati
         if spatial:
             _require(len(ranks) == 2, f'Iteration {index+1} is missing a rank')
         for rank, row in enumerate(ranks):
-            validate_step_record(row, spatial=spatial, generation_steps=generation_steps)
+            validate_step_record(row, spatial=spatial, generation_steps=generation_steps,
+                                 spatial_heads=spatial_heads)
             if spatial:
                 _require(row.get('rank') == rank and row.get('iteration') == index+1,
                          'Rank/iteration provenance is missing or out of order')
