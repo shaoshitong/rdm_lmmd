@@ -26,3 +26,16 @@ checkpoint copy/hardlink, checks unchanged input inode/size/mtime after renderin
 and leaves active training on4/5 running. This command does not launch another
 training job or modify the running source. Publish the comparison source on
 `main`, the only authorized remote branch, and retain the Mac code/docs copy.
+
+## Native-resolution four-column export
+
+`h20-run-native-four-columns.sh` performs CPU-only assembly of existing source
+PNGs into columns0/50/100/150. Every available tile remains1024x1024, canvas width
+is4096, and labels occupy separate header/footer strips. Missing combinations
+are visibly marked. It performs no inference or resizing and uses lossless PNG
+encoding. After saving, every one of the60available tiles is read back and its
+pixels compared exactly to the source PNG; all must be identical.
+
+`local-control/download-visual-original.py` streams the finished PNGs in binary
+over the existing owned ControlMaster, verifies SHA256, and retains partials if
+a transfer fails. It creates no relay and copies no credentials or weights.
