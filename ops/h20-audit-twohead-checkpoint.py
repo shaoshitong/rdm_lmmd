@@ -50,13 +50,23 @@ def audit(args):
         archive_proof = json.loads((control/'twohead-retain50-archive'/f'checkpoint-archive-{args.step}.json').read_text())
         check(archive_proof['passed'] and Path(archive_proof['destination']).resolve()==path,
               'Archived student lacks its matching successful receipt')
+        check(args.full, 'Archived student audit requires full SHA and tensor-value verification')
     before = path.stat()
     check(before.st_size > 24_000_000_000, 'Checkpoint is too small for the full student')
     check(before.st_mtime >= command['created_epoch'], 'Checkpoint predates the current formal run')
     log = (ROOT/'launch-logs'/(PREFIX+'.log')).read_text(errors='replace')
     marker = ('checkpoint -> '+str(EXP/path.name)) if args.student else ('resume state (step '+str(args.step)+')')
     check(marker in log, 'No actual save-completion log for this artifact/step')
-    state = torch.load(path, map_location='cpu', weights_only=False, mmap=True)
+    verified_stream_sha = None
+    remote_memory_headroom = None
+    if archive_proof is not None:
+        from h20_portrait_checkpoint import load_archived_state
+        # Sequential object-store reads have been validated on the real200 file;
+        # direct mmap metadata loading did not finish within90s on this mount.
+        state, remote_memory_headroom = load_archived_state(path, archive_proof)
+        verified_stream_sha = archive_proof['sha256']  # The loader hashes and asserts all actual bytes.
+    else:
+        state = torch.load(path, map_location='cpu', weights_only=False, mmap=True)
     check(state['step'] == args.step, 'Payload step differs from requested step')
     check(state['schedule']['step'] == args.step, 'Schedule step differs from payload')
     check(state['world_size'] == 2 and state['num_steps'] == 2, 'World/generation-step mismatch')
@@ -153,11 +163,14 @@ def audit(args):
             elif isinstance(value, float):
                 check(math.isfinite(value), 'Nonfinite saved scalar')
         finite(state)
-        sha = hashlib.sha256()
-        with path.open('rb') as stream:
-            for block in iter(lambda: stream.read(8*1024*1024), b''):
-                sha.update(block)
-        digest = sha.hexdigest()
+        if verified_stream_sha is not None:
+            digest = verified_stream_sha
+        else:
+            sha = hashlib.sha256()
+            with path.open('rb') as stream:
+                for block in iter(lambda: stream.read(8*1024*1024), b''):
+                    sha.update(block)
+            digest = sha.hexdigest()
     after = path.stat()
     if archive_proof is not None:
         check(before.st_size==after.st_size==archive_proof['bytes'] and digest==archive_proof['sha256'],
@@ -175,6 +188,8 @@ def audit(args):
             'adaptive_controller': {k: controller_state[k] for k in ['current_lr', 'last_completed_step',
                 'valid_observations', 'invalid_observations', 'action_sequence', 'head_keys']},
             'generator_optimizer_in_checkpoint': 'optimizer' in state,
+            'loading_mode': 'full-SHA-verified-remote-RAM-stream' if archive_proof else 'local-remote-ROOT-mmap',
+            'remote_memory_headroom_before_load': remote_memory_headroom,
             'sha256': digest, 'finite_saved_tensors_checked': finite_tensors,
             'actual_formal_exit': exit_code, 'seconds': time.monotonic()-started}
 

@@ -67,3 +67,7 @@ Read-only observer/auditor and portrait followers bind the resumed segment using
 their original logs. Cumulative iteration/counter checks still cover the single
 continuous1..500 scalar log. The final student auditor accepts the authorized
 object-store path only with its exact per-step archive receipt and full SHA match.
+Its final archived-student pass uses the real200-validated sequential RAM loader,
+which hashes the entire actual stream before deserialization, then scans every
+saved floating tensor/scalar for finite values. Local rolling-resume audits continue
+to use local mmap. Full scans still require actual500 and a clean training exit0.
