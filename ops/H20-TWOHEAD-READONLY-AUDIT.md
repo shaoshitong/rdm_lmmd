@@ -28,3 +28,8 @@ legacy300/three-head checkpoint is a negative control and cannot pass.
 No training modules, configs, optimizers, save intervals or cache policy are
 changed. The existing FSDP generator-optimizer serialization limit remains:
 the full generator Adam is absent from resume; D optimizers/controller are saved.
+
+Observer output retains only the latest four detailed probe records, with full
+probe/refresh step lists and mismatch counts over every JSONL iteration. This
+bounds its output at500 and prevents transport/output truncation while retaining
+complete counter, phase, unexpected-AIM and row-count acceptance evidence.
