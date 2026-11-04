@@ -1,0 +1,541 @@
+"""Config -> objects for SW-LMMD, keeping the method/machine split honest at build time.
+
+:func:`window_from_config`, :func:`cache_from_config` and :func:`memory_from_config` parse the
+three independent blocks of a ``configs/sw_lmmd_*.yaml``. The only place they meet is
+:func:`resolve_batching`, which turns the method's ``B`` and the machine's ``micro_batch`` into
+a ``grad_accum`` -- and refuses the combination if it does not divide, rather than silently
+training on a different effective batch.
+
+:func:`build_trainer` wires the real generator and encoder battery via
+:mod:`rdm.train.launch`, so SW-LMMD and iRDM construct their generator identically. It is
+therefore only exercisable with the FLUX weights and a built reference store; the parsing
+functions above it are pure and are covered by ``tests/test_sw_lmmd_core.py``.
+"""
+from __future__ import annotations
+
+import logging
+import os
+
+import torch
+
+from ..utils.distributed import get_world_size
+from .cache import GeneratedWindowCache
+from .config import CacheConfig, GANConfig, LRSchedule, MemoryPolicy, WindowConfig
+from .reference_store import ReferenceFeatureStore
+from .trainer import SWLMMDTrainer
+from .window_schedule import (MixedGroupSchedule, SlidingWindowSchedule, build_grouped_row_order,
+                              split_groups)
+
+logger = logging.getLogger("rdm")
+
+_DTYPES = {"fp32": torch.float32, "float32": torch.float32, "bf16": torch.bfloat16,
+           "bfloat16": torch.bfloat16, "fp16": torch.float16, "float16": torch.float16}
+
+
+def _block(cfg, name: str) -> dict:
+    return dict(getattr(cfg, name, None) or {})
+
+
+def window_from_config(cfg) -> WindowConfig:
+    w = WindowConfig(**{k: v for k, v in _block(cfg, "window").items()
+                        if k in WindowConfig.__dataclass_fields__})
+    w.validate()
+    return w
+
+
+def cache_from_config(cfg) -> CacheConfig:
+    raw = _block(cfg, "cache")
+    dtype = _DTYPES.get(str(raw.pop("store_dtype", "float32")).lower(), torch.float32)
+    return CacheConfig(store_dtype=dtype,
+                       **{k: v for k, v in raw.items() if k in CacheConfig.__dataclass_fields__})
+
+
+def memory_from_config(cfg) -> MemoryPolicy:
+    raw = _block(cfg, "memory")
+    dtype = _DTYPES.get(str(raw.pop("param_dtype", "fp32")).lower(), torch.float32)
+    compute = raw.pop("compute_dtype", None)
+    policy = MemoryPolicy(param_dtype=dtype,
+                          compute_dtype=None if compute is None else _DTYPES[str(compute).lower()],
+                          **{k: v for k, v in raw.items()
+                             if k in MemoryPolicy.__dataclass_fields__})
+    policy.validate()
+    if policy.param_dtype != torch.float32:
+        logger.warning("[sw_lmmd] param_dtype=%s stores the weights the optimizer updates in low "
+                       "precision: an AdamW step smaller than half a ULP rounds to nothing (96%% "
+                       "of klein-4B's weights at lr 2.83e-6 in bf16). Prefer fp32 master weights.",
+                       policy.param_dtype)
+    return policy
+
+
+def gan_from_config(cfg) -> GANConfig:
+    """The ``gan:`` block. Unknown keys are refused: the block is all-optional, so a typo would
+    otherwise silently fall back to a default."""
+    raw = _block(cfg, "gan")
+    unknown = sorted(set(raw) - set(GANConfig.__dataclass_fields__))
+    if unknown:
+        raise ValueError(f"gan: unknown key(s) {unknown} (known: "
+                         f"{sorted(GANConfig.__dataclass_fields__)})")
+    if "betas" in raw:
+        raw["betas"] = tuple(raw["betas"])
+    gan = GANConfig(**raw)
+    gan.validate()
+    return gan
+
+
+def lr_schedule_from_config(cfg) -> LRSchedule:
+    """The ``lr_schedule:`` block (unknown keys refused, as for ``gan:``). A decay horizon left
+    unset is the run's ``steps``, including a ``--set steps=`` override."""
+    raw = _block(cfg, "lr_schedule")
+    unknown = sorted(set(raw) - set(LRSchedule.__dataclass_fields__))
+    if unknown:
+        raise ValueError(f"lr_schedule: unknown key(s) {unknown} (known: "
+                         f"{sorted(LRSchedule.__dataclass_fields__)})")
+    schedule = LRSchedule(**raw)
+    if schedule.total_steps is None and getattr(cfg, "steps", None):
+        schedule.total_steps = int(cfg.steps)
+    schedule.validate()
+    return schedule
+
+
+def warn_gan_pipeline(gan: GANConfig, policy: MemoryPolicy) -> None:
+    """Warn when the critic would compare features from two different encoder pipelines."""
+    if gan.enabled and policy.battery_bf16:
+        logger.warning("[sw_lmmd] gan.enabled with memory.battery_bf16=true: the critic compares "
+                       "the store's features (fp32 encoder weights) with bf16-weight features, a "
+                       "difference a linear probe already detects on identical images (53-56% "
+                       "held out, vs 50% with fp32 weights). Prefer battery_bf16: false for GAN "
+                       "runs -- see rdm/sw_lmmd/adversarial.py.")
+
+
+def resolve_batching(cfg, policy: MemoryPolicy, window: WindowConfig,
+                     world_size: int | None = None) -> dict:
+    """The one place the method's ``B`` meets the machine's micro-batching."""
+    world = get_world_size() if world_size is None else int(world_size)
+    active = int(getattr(cfg, "active_global_batch", window.stride))
+    if active != window.stride:
+        raise ValueError(f"active_global_batch {active} must equal the window stride "
+                         f"{window.stride}: B is the number of rows the window slides by")
+    grad_accum = policy.resolve_grad_accum(active, world)
+    return {"active_global": active, "world_size": world, "per_rank": active // world,
+            "micro_batch": policy.micro_batch, "grad_accum": grad_accum,
+            "max_cache_age": window.max_age_steps}
+
+
+def wrap_fsdp(model, policy: MemoryPolicy, device="cuda"):
+    """Shard params / grads / optimizer state across ranks (ZeRO-3). Returns the wrapper.
+
+    Needed only where the training state does not fit one card (a 24 GB 4090); an 80 GB card
+    runs faster without it, since every transformer block costs an extra all-gather. Four
+    settings here are load-bearing rather than cosmetic:
+
+    * **per-block units.** ``model.fsdp_unit_types()`` names the MM-DiT block classes, so each
+      block is one unit and only one is materialized at a time; the rest (embedders,
+      modulations, final layer -- ~0.2 B params) is the root unit. FSDP gathers a unit only
+      when its ``forward`` runs, which is why :func:`shard_generator` must also re-point the
+      generator at the wrapper.
+    * **fp32 master shards, ``compute_dtype`` gathers.** The shards keep ``param_dtype`` for
+      the optimizer; forward/backward see ``compute_dtype`` copies, halving all-gather traffic.
+      Root inputs are not cast, so the latent noise stays fp32 exactly as without FSDP.
+    * **``reduce_dtype=float32``.** The gradient reduce-scatter accumulates in fp32 rather than
+      in bf16's 8 significant bits across thousands of values.
+    * **full state dict.** FSDP's default ``state_dict`` is per-rank shards, which no evaluator
+      can load. This makes checkpoints ordinary whole-model files -- and makes ``state_dict()``
+      a collective that every rank must call (see :func:`train`).
+
+    The caller must also set ``grad_reduce='none'``: FSDP's reduce-scatter already averages, so
+    the trainer's manual all-reduce would average a second time. ``MemoryPolicy.validate``
+    refuses that combination.
+    """
+    import functools
+
+    from torch.distributed.fsdp import FullStateDictConfig, FullyShardedDataParallel as FSDP
+    from torch.distributed.fsdp import MixedPrecision, ShardingStrategy, StateDictType
+    from torch.distributed.fsdp.wrap import ModuleWrapPolicy, size_based_auto_wrap_policy
+
+    unit_types = model.fsdp_unit_types() if hasattr(model, "fsdp_unit_types") else None
+    auto_wrap = ModuleWrapPolicy(unit_types) if unit_types else \
+        functools.partial(size_based_auto_wrap_policy, min_num_params=int(1e7))
+    compute_dtype = policy.compute_dtype or policy.param_dtype
+    device = torch.device(device)
+    logger.info("[sw_lmmd] FSDP: sharding params/grads/optimizer state (master=%s, "
+                "compute=%s, reduce=fp32, units=%s)", policy.param_dtype, compute_dtype,
+                sorted(t.__name__ for t in unit_types) if unit_types else "size>=1e7")
+    wrapped = FSDP(
+        model,
+        sharding_strategy=ShardingStrategy.FULL_SHARD,               # ZeRO-3
+        auto_wrap_policy=auto_wrap,
+        mixed_precision=MixedPrecision(param_dtype=compute_dtype,
+                                       reduce_dtype=torch.float32,
+                                       cast_forward_inputs=False,
+                                       cast_root_forward_inputs=False),
+        device_id=device,
+        use_orig_params=True,                 # keeps `model.parameters()` usable by the optimizer
+    )
+    FSDP.set_state_dict_type(wrapped, StateDictType.FULL_STATE_DICT,
+                             FullStateDictConfig(offload_to_cpu=device.type == "cuda",
+                                                 rank0_only=True))
+    return wrapped
+
+
+def shard_generator(generator, model, policy: MemoryPolicy, device="cuda"):
+    """FSDP-wrap ``model`` and point ``generator`` at the wrapper. Returns it (None if unsharded).
+
+    The re-point is the load-bearing half: FSDP gathers the root unit only inside the wrapper's
+    ``forward``, so a generator still holding the inner module computes on the bare 1-D shards
+    and fails at the first matmul.
+    """
+    if policy.shard != "fsdp":
+        return None
+    wrapped = wrap_fsdp(model, policy, device)
+    generator.model = wrapped
+    return wrapped
+
+
+def build_optimizer(params, cfg, policy: MemoryPolicy):
+    """AdamW, optionally with 8-bit moment states.
+
+    The two moments are half of the training state (``2 x 4 bytes x 3.9e9`` = 31 GB for
+    klein-4B); holding them in 8 bits drops that to 7.75 GB. Purely a memory/precision trade
+    -- the update rule is unchanged, so this does not alter the objective.
+    """
+    kw = dict(lr=cfg.lr, betas=(getattr(cfg, "beta1", 0.9), getattr(cfg, "beta2", 0.95)),
+              weight_decay=getattr(cfg, "weight_decay", 0.0))
+    if policy.optimizer == "adamw":
+        return torch.optim.AdamW(params, **kw)
+    if policy.optimizer == "adamw8bit":
+        try:
+            import bitsandbytes as bnb
+        except ImportError as e:
+            raise ImportError(
+                "optimizer='adamw8bit' needs bitsandbytes (pip install bitsandbytes). Use "
+                "optimizer='adamw' if you have the headroom -- see configs/sw_lmmd_*.yaml") from e
+        return bnb.optim.AdamW8bit(params, **kw)
+    raise NotImplementedError(
+        f"optimizer={policy.optimizer!r} is not wired (CPU-offload plumbing is not written); "
+        f"use 'adamw' or 'adamw8bit'")
+
+
+def resolve_reference_extension(cfg) -> str | None:
+    """``reference_extension:`` -> an absolute block path, or None.
+
+    A relative path is taken next to the store (relative to ``reference_root``'s parent), so a
+    config naming ``geneval_block`` finds ``<root>/sw_lmmd/geneval_block`` on any machine whose
+    store sits at ``<root>/sw_lmmd/reference_store`` -- the layout new_machine.sh creates.
+    """
+    ext = getattr(cfg, "reference_extension", None)
+    if not ext:
+        return None
+    if not os.path.isabs(ext):
+        ext = os.path.join(os.path.dirname(os.path.abspath(cfg.reference_root)), ext)
+    if not os.path.isfile(os.path.join(ext, "metadata.json")):
+        raise FileNotFoundError(f"reference_extension {ext} has no metadata.json -- build it with "
+                                f"scripts/build_geneval_block.sh, or copy it next to the store")
+    return ext
+
+
+def build_trainer(cfg, device: str = "cuda") -> SWLMMDTrainer:
+    """Assemble the full SW-LMMD trainer from a parsed config (needs weights + a built store)."""
+    from ..representation.battery import Battery
+    from ..representation.registry import by_name
+    from ..train.launch import build_generator_from_config
+
+    window = window_from_config(cfg)
+    policy = memory_from_config(cfg)
+    batching = resolve_batching(cfg, policy, window)
+    logger.info("[sw_lmmd] K=%d B=%d overlap=%d | world=%d micro_batch=%d grad_accum=%d "
+                "| max cache age %d steps", window.size, window.stride, window.overlap,
+                batching["world_size"], batching["micro_batch"], batching["grad_accum"],
+                batching["max_cache_age"])
+
+    names = list(cfg.encoders)
+    extension = resolve_reference_extension(cfg)
+    store = ReferenceFeatureStore(cfg.reference_root, names,
+                                  require_context=getattr(cfg, "joint", True), extension=extension)
+    if store.extension is not None:
+        logger.info("[sw_lmmd] reference extension %s: %d rows appended (%s), %.1f%% of %d",
+                    store.extension["root"], store.extension["rows"], store.extension["kind"],
+                    100.0 * store.extension["rows"] / store.num_rows, store.num_rows)
+    pattern = str(window.group_pattern).upper()
+    if window.group_by_prompt and store.prompt_ids is None:
+        raise ValueError("window.group_by_prompt needs a store with prompt_ids.npy (several "
+                         "reference rows per prompt); this store has one row per prompt")
+    grouping = store.grouping_ids() if window.group_by_prompt else None
+    if window.group_by_prompt and window.group_size:
+        grouping = split_groups(grouping, window.group_size, window.order_seed)
+        logger.info("[sw_lmmd] window.group_size %d: each group cut into random sub-groups of %d "
+                    "rows, scheduled separately", window.group_size, window.group_size)
+    if window.group_by_prompt and pattern != "G":
+        schedule = MixedGroupSchedule(grouping, pattern, window_size=window.size,
+                                      stride=window.stride, cyclic=window.cyclic,
+                                      seed=window.order_seed)
+        n_g = int(schedule.kinds.sum())
+        logger.info("[sw_lmmd] mixed schedule '%s': %d grouped + %d ungrouped steps per %d-step "
+                    "lap (%d rows per group; %d of %d rows sit out each lap)", pattern, n_g,
+                    schedule.kinds.size - n_g, schedule.kinds.size, schedule.group_size,
+                    store.num_rows - schedule.num_rows, store.num_rows)
+    else:
+        if window.group_by_prompt:
+            row_order, group = build_grouped_row_order(grouping, window.order_seed)
+            logger.info("[sw_lmmd] prompt-grouped window: %d rows per group -> %d groups per "
+                        "window, %d fresh groups per step", group, window.size // group,
+                        window.stride // group)
+        else:
+            row_order, group = store.row_order(window.order_seed), 1
+        schedule = SlidingWindowSchedule(row_order, window_size=window.size, stride=window.stride,
+                                         cyclic=window.cyclic, group_size=group)
+    if window.unbiased_siblings or window.sibling_weight != 1.0:
+        g = schedule.group_size
+        if batching["per_rank"] % g:                       # fail before the model loads
+            raise ValueError(f"sibling weighting needs each rank's {batching['per_rank']} active "
+                             f"rows to be whole groups of {g}")
+        w = g / (g - 1) if window.unbiased_siblings else float(window.sibling_weight)
+        logger.info("[sw_lmmd] sibling repulsion weight %.3f (%s): same-prompt repulsion = %.2f x "
+                    "the attraction (plain biased force: %.2f)", w,
+                    "unbiased" if window.unbiased_siblings else "window.sibling_weight",
+                    w * (g - 1) / g, (g - 1) / g)
+    generator, model = build_generator_from_config(cfg, device, param_dtype=policy.param_dtype)
+    # Shard before the battery loads: until FSDP keeps only this rank's 1/world, every rank
+    # holds the whole fp32 model (15.5 GB), which leaves a 24 GB card no room for encoders.
+    clip_module = shard_generator(generator, model, policy, device)
+
+    battery = Battery([by_name(n) for n in names], device=device)
+    if policy.battery_bf16:
+        for enc in battery.encoders.values():
+            if not getattr(enc, "has_logits", False):
+                enc.to(torch.bfloat16)
+
+    noise_shape = (model.in_channels, model.input_size, model.input_size) \
+        if getattr(cfg, "mode", "flux") == "flux" else \
+        (3, getattr(cfg, "img_size", 256), getattr(cfg, "img_size", 256))
+
+    gan, critic = gan_from_config(cfg), None
+    if gan.enabled:
+        from .adversarial import build_critic
+        warn_gan_pipeline(gan, policy)
+        # a block critic on a mixed G/U schedule: one critic per step kind (PerKindCritic)
+        per_kind = gan.critic == "block" and isinstance(schedule, MixedGroupSchedule)
+        critic = build_critic(gan, store, names, joint=getattr(cfg, "joint", True), device=device,
+                              block=window.stride if gan.critic == "block" else None,
+                              per_kind=per_kind)
+        logger.info("[sw_lmmd] GAN critic (%s): heads %s | %.1f M params | weight %g (%s) | %s "
+                    "loss | lr %g | generator term from step %d",
+                    ("row: one logit per image" if critic.block is None else
+                     f"block: one logit per step's {critic.block} fresh rows")
+                    + (f"; trained on the {window.size}-row window" if gan.critic_rows == "window"
+                       else f"; trained on the step's {window.stride} fresh rows only")
+                    + ("; one critic for grouped blocks, one for ungrouped" if per_kind else ""),
+                    critic.names, sum(p.numel() for p in critic.critic.parameters()) / 1e6,
+                    gan.weight, "adaptive" if gan.adaptive else "fixed", gan.loss, gan.lr,
+                    gan.g_start_step)
+
+    lr_schedule = lr_schedule_from_config(cfg)
+    logger.info("[sw_lmmd] lr %g, schedule %s (warm-up %d, floor %gx, horizon %s steps)",
+                cfg.lr, lr_schedule.name, lr_schedule.warmup_steps, lr_schedule.min_lr_ratio,
+                lr_schedule.total_steps)
+
+    return SWLMMDTrainer(
+        generator, battery, store, schedule,
+        build_optimizer([p for p in model.parameters() if p.requires_grad], cfg, policy),
+        encoder_names=names, noise_shape=noise_shape,
+        cache=GeneratedWindowCache(names, store_dtype=cache_from_config(cfg).store_dtype),
+        micro_batch=policy.micro_batch, grad_clip=getattr(cfg, "grad_clip", 4.0),
+        kernel_block=int(_block(cfg, "loss").get("kernel_block_size", 256)),
+        seed=getattr(cfg, "seed", 0), joint=getattr(cfg, "joint", True),
+        grad_reduce=policy.grad_reduce, monitor_every=getattr(cfg, "monitor_every", 1),
+        cache_cfg=cache_from_config(cfg), clip_module=clip_module, device=device, critic=critic,
+        lr_schedule=lr_schedule, unbiased_siblings=window.unbiased_siblings,
+        sibling_weight=window.sibling_weight)
+
+
+def train(cfg, device: str = "cuda", trainer: SWLMMDTrainer | None = None) -> SWLMMDTrainer:
+    """Bootstrap, then run ``cfg.steps`` sliding-window updates with drift control.
+
+    The loop owns three things the trainer deliberately does not: the staleness policy (probe,
+    then refresh on a schedule or a drift trigger), the machine-readable log, and checkpoints.
+    Keeping them out of :meth:`SWLMMDTrainer.step` is what lets the method layer stay testable
+    without a filesystem or a clock. ``trainer`` injects a prebuilt one (the FSDP test drives
+    this loop with a tiny model); by default it is built from ``cfg``.
+
+    ``step_NNNNNNN.pth`` checkpoints are weights-only unless ``save_optimizer: true`` (for fp32
+    AdamW that is 31 GB per save); they are what gets evaluated, so they never carry the critic.
+
+    Resume: with ``save_resume: true`` the loop also keeps ONE ``resume.pth`` -- weights,
+    optimizer moments (not under FSDP, whose optimizer is sharded), the schedule position, the
+    generated cache and, with ``gan.enabled``, the critic with its optimizer -- rewritten every
+    ``resume_every`` steps (default ``save_freq``) and at the end. ``resume_from: <that file>``
+    continues the run where it stopped: same step counter, same windows, same optimizer state,
+    so the remaining steps are those of an uninterrupted run.
+    Every file is written beside its target and renamed into place, so a crash mid-write never
+    leaves a truncated checkpoint where a good one was.
+    """
+    import json
+    import os
+    import time
+
+    from ..utils.distributed import is_main_process
+    from .refresh import probe_drift, refresh_retained, should_refresh
+
+    trainer = trainer if trainer is not None else build_trainer(cfg, device=device)
+    save_cache = bool(getattr(cfg, "save_cache", False))
+    save_optimizer = bool(getattr(cfg, "save_optimizer", False))
+    if save_optimizer and trainer.clip_module is not None:
+        raise ValueError("save_optimizer under FSDP would store only rank 0's optimizer shard, "
+                         "which cannot resume anything; leave it false")
+    save_freq = int(getattr(cfg, "save_freq", 50))
+    save_resume = bool(getattr(cfg, "save_resume", False))
+    resume_every = int(getattr(cfg, "resume_every", 0) or save_freq)
+    resume_from = getattr(cfg, "resume_from", None) or None
+    cache_cfg = cache_from_config(cfg)
+    out_dir = os.path.join(getattr(cfg, "output_dir", "./work_dirs"),
+                           getattr(cfg, "exp_name", "sw-lmmd"))
+    os.makedirs(out_dir, exist_ok=True)
+    jsonl = open(os.path.join(out_dir, "train_log.jsonl"), "a") if is_main_process() else None
+
+    def write(state, path):
+        tmp = path + ".partial"
+        torch.save(state, tmp)
+        os.replace(tmp, path)
+
+    def checkpoint():
+        # EVERY rank builds the state: under FSDP the full state dict is a collective gather,
+        # and a rank-0-only call blocks until the NCCL timeout. Only rank 0 writes it.
+        state = trainer.state_dict(with_cache=save_cache, with_optimizer=save_optimizer,
+                                   with_critic=False)
+        if is_main_process():
+            path = os.path.join(out_dir, f"step_{trainer.step_idx:07d}.pth")
+            write(state, path)
+            logger.info("[sw_lmmd] checkpoint -> %s", path)
+
+    def save_resume_state():
+        state = trainer.state_dict(with_cache=True, with_optimizer=trainer.clip_module is None)
+        if is_main_process():
+            t = time.time()
+            write(state, os.path.join(out_dir, "resume.pth"))
+            logger.info("[sw_lmmd] resume state (step %d) -> %s in %.0f s", trainer.step_idx,
+                        os.path.join(out_dir, "resume.pth"), time.time() - t)
+
+    t0 = time.time()
+    if resume_from:
+        state = torch.load(resume_from, map_location="cpu", weights_only=False, mmap=True)
+        restored = trainer.load_state_dict(state)
+        del state
+        logger.info("[sw_lmmd] resumed %s at step %d (weights %s, optimizer %s, cache %s%s)",
+                    resume_from, restored["step"],
+                    "loaded" if restored["model"] else "from load_from",
+                    "restored" if restored["optimizer"] else "FRESH",
+                    "restored" if restored["cache"] else "re-bootstrapped",
+                    "" if "critic" not in restored else
+                    ", critic " + ("restored" if restored["critic"] else "FRESH"))
+    if not trainer.cache.initialized:
+        logger.info("[sw_lmmd] bootstrap ...")
+        boot = trainer.bootstrap()
+        logger.info("[sw_lmmd] bootstrap done: %s rows (%s/rank) in %.1f s",
+                    boot["bootstrap_rows"], boot["bootstrap_rows_per_rank"], time.time() - t0)
+
+    probe_every = int(getattr(cfg, "probe_every", 0) or cache_cfg.refresh_every_windows or 0)
+    drift = None
+    for _ in range(max(0, int(cfg.steps) - trainer.step_idx)):
+        step_t = time.time()
+        logs = trainer.step()
+        logs["seconds"] = time.time() - step_t
+
+        window = trainer.schedule.peek()          # the window the NEXT step will use
+        if probe_every and trainer.step_idx % probe_every == 0:
+            stats = probe_drift(trainer, window, cache_cfg.refresh_probe_rows)
+            drift = stats.get("drift_mean")
+            logs.update(stats)
+        if should_refresh(trainer, window, drift, cache_cfg):
+            logs.update(refresh_retained(trainer, window))
+            drift = None
+
+        if is_main_process():
+            if trainer.step_idx % int(getattr(cfg, "print_freq", 1)) == 0:
+                gan = "" if "gan/d_acc" not in logs else \
+                    " | D acc %.3f real %+.3f fake %+.3f | lambda %s" % (
+                        logs["gan/d_acc"], logs["gan/d_real"], logs["gan/d_fake"],
+                        "%.4g" % logs["gan/lambda"] if "gan/lambda" in logs else "off")
+                logger.info("step %d | force %.6f | raw_mmd2 %.6g | grad_norm %s | lr %.3g | "
+                            "cache_age %d | %.1f s%s", logs["step"], logs["force"],
+                            logs.get("raw_mmd2", float("nan")), logs["grad_norm"], logs["lr"],
+                            logs["cache_max_age"], logs["seconds"], gan)
+            jsonl.write(json.dumps(logs) + "\n")
+            jsonl.flush()
+        # Replace the rolling resume before adding a historical student file.
+        # This releases the old rolling inode first and avoids needing space
+        # for the old resume + new resume temporary + new student at once.
+        if save_resume and trainer.step_idx % resume_every == 0:
+            save_resume_state()
+        if trainer.step_idx % save_freq == 0:
+            checkpoint()
+
+    if save_resume and trainer.step_idx % resume_every:
+        save_resume_state()
+    if trainer.step_idx % save_freq:              # the final step, unless it was just saved
+        checkpoint()
+    if is_main_process():
+        jsonl.close()
+        logger.info("[sw_lmmd] done: %d steps in %.2f h", trainer.step_idx,
+                    (time.time() - t0) / 3600)
+    return trainer
+
+
+def apply_override(cfg, override: str) -> None:
+    """Apply one ``key=value`` / ``block.key=value`` override onto a parsed config.
+
+    Values are parsed as YAML so ``true``/``8``/``1e-5`` arrive with the right type; a bare
+    string stays a string. Only keys that already exist in a nested block are accepted -- a
+    typo in ``--set memroy.shard=fsdp`` would otherwise be silently ignored and the run would
+    proceed with the wrong memory policy.
+    """
+    import yaml
+
+    if "=" not in override:
+        raise SystemExit(f"--set expects KEY=VALUE, got {override!r}")
+    key, raw = override.split("=", 1)
+    value = yaml.safe_load(raw)
+    if "." in key:
+        block, leaf = key.split(".", 1)
+        current = getattr(cfg, block, None)
+        if not isinstance(current, dict):
+            raise SystemExit(f"--set {key}: config has no block {block!r}")
+        if leaf not in current:
+            raise SystemExit(f"--set {key}: {block!r} has no key {leaf!r} "
+                             f"(has {sorted(current)})")
+        current[leaf] = value
+    else:
+        setattr(cfg, key, value)
+    logger.info("[sw_lmmd] override %s = %r", key, value)
+
+
+def main() -> None:
+    """``torchrun --nproc_per_node=2 -m rdm.sw_lmmd.launch configs/sw_lmmd_h100_2gpu.yaml``"""
+    import argparse
+
+    from ..train.launch import load_config
+    from ..utils.distributed import setup_distributed
+    from ..utils.logging import setup_logging
+    from ..utils.seed import fix_random_seeds
+
+    ap = argparse.ArgumentParser(description="SW-LMMD training")
+    ap.add_argument("config")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="override a config key; dotted for nested blocks "
+                         "(e.g. --set memory.shard=fsdp --set steps=5)")
+    args = ap.parse_args()
+    cfg = load_config(args.config)
+    for override in args.set:
+        apply_override(cfg, override)
+    if getattr(cfg, "method", None) != "sw_lmmd":
+        raise SystemExit(f"{args.config} is not a SW-LMMD config (method: {getattr(cfg,'method',None)!r})")
+
+    rank, world, local_rank = setup_distributed()
+    setup_logging(rank=rank)
+    # The window schedule and the per-row noise are seeded identically on every rank by
+    # construction; the global seed only affects anything left to torch's default generator.
+    fix_random_seeds(getattr(cfg, "seed", 0))
+    device = f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu"
+    train(cfg, device=device)
+
+
+if __name__ == "__main__":
+    main()

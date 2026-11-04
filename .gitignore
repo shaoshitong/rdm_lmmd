@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Environments
+.venv/
+venv/
+.env
+
+# Local secrets -- NEVER committed (the repo is public). The scripts read the HF token from here.
+.hf_token
+
+# Large artifacts (downloaded / precomputed, never committed)
+checkpoints/
+work_dirs/
+data/fid_stats/
+data/imagenet/
+data/coco/
+*.pt
+*.pth
+*.npy
+*.npz
+*.safetensors
+
+# Outputs (generated samples, work-dir plots) -- but DO ship the paper figures
+*.png
+*.pdf
+!figures/
+!figures/*.png
+!figures/*.pdf
+reports/
+wandb/
+
+# Internal / experiment-only leftovers -- NEVER publish (hardcode cluster paths + private assets)
+DEPLOYMENT_TEST_NOTES.md
+configs/*_kuma*.yaml
+configs/eval_flux_*_s20*.yaml
+assets/pickapic_train_prompts.jsonl
+
+# Generated locally, kept out of the repo: teaser renders (symlinks included), comparison pages, reports
+/teaser_render
+/teaser_render2
+/teaser_render2_1024
+/zimage_compare/
+/eval_report/
+/analysis/out/
+
+# OS / editor
+.DS_Store
+*.swp
