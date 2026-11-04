@@ -37,8 +37,18 @@ each source tile remains1024x1024 and is pixel-compared after PNG save/readback.
 
 `h20-plot-twohead-loss.py` plots only existing logged scalars, omits inactive
 GAN-G warmup entries, retains raw spikes, overlays a trailing10-iteration mean,
-and marks the recorded D learning-rate action at its effective iteration125.
+and marks every recorded D learning-rate action at its effective iteration.
 PNG and vector PDF exports need no training hooks or extra model statistics.
+
+After the authorized200 resume, `ops/local-control/h20-twohead-loss-snapshot.py`
+reads the already-existing scalar log through the bound observer. It verifies the
+actual resume log, command and preflight before recording source lineage1..200
+(`a25e4c4`) and201..current (`1e06bf4`). Run it through the existing SSH helper and
+save the returned scalar JSON locally; no weights or tensors are transferred.
+Pass that JSON to `h20-plot-twohead-loss.py --output <local-output-prefix>`.
+The resumed plot marks the G Adam reset after200 and restarts moving averages
+at201. It rejects a source/lineage mismatch instead of relabeling the resumed
+iterations as the original source. Pre-resume snapshots through200 remain supported.
 
 ## Retained-weight follow-up after the authorized200 resume
 
