@@ -20,14 +20,15 @@ are checked before inference so none is silently truncated at512 tokens.
 Only a spare physicalGPU6 or7 can be selected; preflight checks48GiB free twice,
 the CUDA allocator is capped at32GiB, a per-GPU exclusive preview lock is acquired,
 and the inference command has a30minute timeout. Current training stays on4/5.
-The rolling checkpoint is loaded with its actual step/schedule/head contract
-checked; no checkpoint is copied, linked, overwritten or archived.
+The original0/150 recipe loads the rolling checkpoint with its actual step/schedule/
+head contract checked. The retained-stage follower uses the exact independent archive.
+Portrait inference creates no additional weight files or hardlinks and does not write weights.
 
-`h20-run-follow-qib-portrait-saves.sh` waits at most24h for actual existing
-200/250/300/350/400/450/500 saves, checking each newly published checkpoint inode
-and payload step. It waits for spareGPU6 headroom, invokes the same bounded preview,
-and records true exit and image receipts. An overwritten stage is explicitly missed,
-never relabeled. Failure stops this helper without touching training.
+`h20-run-follow-qib-portrait-saves.sh` waits at most36h for successful full final-object
+SHA receipts for200/250/300/350/400/450/500. Existing verified previews are reused.
+For each remaining stage it waits for spareGPU6 headroom and loads that step's retained
+archive, even if training has advanced. It records true exit and actual image receipts.
+Failure stops this helper without touching training.
 
 Remote artifacts: `/data/shaoshitong/rdm-sets/visualizations/twohead-lr10-A/qib-portraits-v1`.
 Logs and true exits: `launch-logs/twohead-qib-portraits-*.log`,
@@ -56,3 +57,7 @@ is required, and spare-GPU headroom is rechecked after the read. Loading byte co
 are explicitly distinct from generated-image progress.
 The standby follower uses no Torch/GPU kernels. It preserves the existing0/150/200
 previews and can catch up250..500 in order while training continues on4/5.
+The actual200 archive completed RAM-read/SHA/deserialization/schema validation in
+112.82seconds, exit0, with521 FP32 tensors and6,154,908,736 model elements. That
+validation ran no GPU kernels or inference. The current13 CPU tests also passed
+in the real Torch2.8 training environment.
