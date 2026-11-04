@@ -71,3 +71,7 @@ Its final archived-student pass uses the real200-validated sequential RAM loader
 which hashes the entire actual stream before deserialization, then scans every
 saved floating tensor/scalar for finite values. Local rolling-resume audits continue
 to use local mmap. Full scans still require actual500 and a clean training exit0.
+Standalone CPU validators explicitly set `TMPDIR` to the existing remote
+`/data/shaoshitong/rdm-sets/.cache/tmp` before importing Torch, because the node's
+root filesystem has no usable default temporary space. Training already uses that
+explicit remote temp directory; its environment is not changed by this fix.

@@ -6,6 +6,8 @@ from h20_portrait_checkpoint import archived_checkpoint, load_archived_state, va
 
 ROOT = pathlib.Path('/data/shaoshitong/rdm-sets')
 CONTROL = ROOT/'control'
+(ROOT/'.cache/tmp').mkdir(parents=True, exist_ok=True)
+os.environ['TMPDIR'] = str(ROOT/'.cache/tmp')
 
 
 def write(name, value):

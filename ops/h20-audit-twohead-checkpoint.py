@@ -25,6 +25,9 @@ def check(condition, message):
 
 def audit(args):
     os.environ['CUDA_VISIBLE_DEVICES'] = ''
+    temporary = ROOT/'.cache/tmp'
+    temporary.mkdir(parents=True, exist_ok=True)
+    os.environ['TMPDIR'] = str(temporary)
     import numpy as np
     import torch
     import yaml
