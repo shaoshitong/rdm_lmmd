@@ -21,6 +21,7 @@ def main():
         target=CONTROL/f'step_{step:07d}-model.pth'
         if target.exists():
             assert (target.with_suffix('.verified.json')).exists()
+            result.append(json.loads(target.with_suffix('.verified.json').read_text()))
             continue
         state=torch.load(source,map_location='cpu',weights_only=False,mmap=True)
         assert state['step']==step and state['num_steps']==2
