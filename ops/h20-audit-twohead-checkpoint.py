@@ -29,7 +29,7 @@ def audit(args):
     import torch
     import yaml
     torch.set_num_threads(1)
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(TRAIN_SOURCE))
     from rdm.sw_lmmd.window_schedule import SlidingWindowSchedule, build_row_order
     from rdm.sw_lmmd.adaptive_d_lr import AdaptiveDLRConfig, AdaptiveDLRController
     started = time.monotonic()
