@@ -392,6 +392,14 @@ def train(cfg, device: str = "cuda", trainer: SWLMMDTrainer | None = None) -> SW
     jsonl = open(os.path.join(out_dir, "train_log.jsonl"), "a") if is_main_process() else None
 
     def write(state, path):
+        if getattr(cfg, 'checkpoint_archive_dir', None):
+            from .checkpoint_archive import wait_for_space
+            # The asynchronous archive must free completed student staging files before
+            # the next atomic resume write can consume another full snapshot's space.
+            required = (os.path.getsize(path) if os.path.exists(path) else
+                        sum(v.numel()*v.element_size() for v in state['model'].values())) + 1024**3
+            wait_for_space(out_dir, required, os.path.join(
+                getattr(cfg, 'checkpoint_archive_control'), 'checkpoint-archive-worker.exit'))
         tmp = path + ".partial"
         torch.save(state, tmp)
         os.replace(tmp, path)
