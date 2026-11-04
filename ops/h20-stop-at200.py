@@ -60,4 +60,13 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    rc = 0
+    try:
+        main()
+    except BaseException:
+        import traceback
+        traceback.print_exc()
+        rc = 1
+    finally:
+        (ROOT/'control/twohead-resume200-guard.exit').write_text(str(rc)+'\n')
+    raise SystemExit(rc)
