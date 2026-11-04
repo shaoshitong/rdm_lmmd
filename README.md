@@ -12,6 +12,35 @@
 
 ## What this fork is
 
+### H20 Z-Image experiment (2026-11-04)
+
+The current H20 experiment uses two generation steps at 1024 px. Its GAN has
+exactly two frozen spatial image branches, **DINOv3 and Qwen3-VL-4B-Instruct**:
+both reference and generated images pass through the same encoders, and the
+PatchGAN heads condition on Qwen3-4B caption features. The GAN loss is softplus.
+The original MMD streams remain **DINOv3, SigLIP2 and AIMv2**.
+
+The latest explicit user setting raises the generator base LR to **2.83e-5**,
+with 100-step warmup then cosine decay. Discriminator base LR is **1e-5** with
+the checkpointed adaptive controller. The running job uses physical GPUs 4/5,
+global batch 32, microbatch 2, accumulation 8, FA3 and activation checkpoint
+groups of two blocks. It saves a rolling resume every 50 iterations, targeting
+500. Actual step-50/100 saves and metadata readbacks have passed; completion of
+the 500-step run is still pending. Only the existing global `grad_norm` is logged.
+
+- [Current configuration](z-image/configs/zimage_2step_1024_twohead_glr10_h20_fa3.yaml)
+- [Run entry, validation, restart scope and optimizer limitation](ops/H20-TWOHEAD-LR10.md)
+- [Read-only checkpoint and final integrity verification](ops/H20-TWOHEAD-READONLY-AUDIT.md)
+- [Actual training-prompt reference / initial / iteration-100 previews](ops/H20-TRAINING-PROMPT-PREVIEW.md)
+- [Mac control and historical orchestration source](ops/local-control/README.md)
+
+The published branch includes the running training version `a25e4c4` and later
+observation/plotting/preview tools. Those later tools are separate from the
+immutable running checkout. Weights, datasets, environments and credentials
+remain outside this code repository.
+
+### Original method overview
+
 Upstream **iRDM** distills a one-step image generator by matching generated and reference
 feature distributions under a battery of frozen encoders. Its loss compares a *large fresh
 rollout* — 10,240 generated images per optimizer step for the FLUX run — against a reference
@@ -27,9 +56,10 @@ This fork replaces that objective with **SW-LMMD**, which
 Per-step fresh rollouts drop **10,240 → 128**. Everything else — the encoder battery, the
 joint image-text feature, GradCache, the generator wrapper — is reused unchanged.
 
-> **Status.** The method layer is implemented and proven (124 tests, incl. the two invariants
+> **Original method-layer status.** The method layer is implemented and proven (124 tests, incl. the two invariants
 > below). It has **never been run on the real 4B model**: every test uses a toy generator and a
-> mock battery, and the reference store is still being built. See [Status](#status).
+> mock battery, and the reference store is still being built. This is the original FLUX-era
+> status; the current H20 Z-Image work is documented above. See [Status](#status).
 
 ---
 

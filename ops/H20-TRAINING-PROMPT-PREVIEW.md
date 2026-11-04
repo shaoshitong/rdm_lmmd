@@ -25,5 +25,8 @@ Full PNGs remain under the remote `visualizations/twohead-lr10-A/` directory;
 only final requested contact sheets, prompts and small receipts go to the Mac.
 The shell wrapper saves its real exit code and combined stdout/stderr.
 
-The user explicitly waived Git push (“不推送就行”); preserve a local commit and
-the Mac code/docs snapshot, with SHA checks against the deployed scripts.
+The user initially waived Git push (“不推送就行”), then explicitly requested
+publication to `shaoshitong/rdm_lmmd` after reviewing these images. Preserve the
+Mac code/docs snapshot and publish the latest commit, with remote SHA readback
+and file hashes checked against the deployed scripts. This publication does not
+change the running training checkout.
