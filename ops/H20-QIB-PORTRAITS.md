@@ -38,3 +38,21 @@ each source tile remains1024x1024 and is pixel-compared after PNG save/readback.
 GAN-G warmup entries, retains raw spikes, overlays a trailing10-iteration mean,
 and marks the recorded D learning-rate action at its effective iteration125.
 PNG and vector PDF exports need no training hooks or extra model statistics.
+
+## Retained-weight follow-up after the authorized200 resume
+
+Every50-step student from200 onwards is now independently archived. The current
+portrait follower waits for each stage's successful final-object SHA receipt and
+passes that exact archive to `--checkpoint`. It never substitutes the latest rolling
+resume or drops a requested case merely because GPU6 became available later.
+The saved student has no critic tensors; the loader verifies its step/schedule,
+world size, two-step sampling, all521 FP32 model tensors and the exact four adaptive
+D head keys. This is a CPU metadata check against an already fully hashed object.
+Direct object-store mmap metadata loading did not finish within90seconds in the
+actual probe. The archived input is therefore read sequentially into the H20
+process's RAM, SHA-checked again, deserialized on CPU, and released after loading.
+There is no Mac or H20 disk staging copy. At least96GiB host/cgroup memory headroom
+is required, and spare-GPU headroom is rechecked after the read. Loading byte counts
+are explicitly distinct from generated-image progress.
+The standby follower uses no Torch/GPU kernels. It preserves the existing0/150/200
+previews and can catch up250..500 in order while training continues on4/5.

@@ -28,6 +28,8 @@ def main():
     p.add_argument('--step', type=int, choices=range(50, 501, 50), required=True)
     p.add_argument('--gpu', type=int, choices=[6, 7], required=True)
     p.add_argument('--include-initial', action='store_true')
+    p.add_argument('--checkpoint', type=pathlib.Path,
+                   help='Exact final-SHA-verified independent archived student for this step')
     a = p.parse_args()
     assert os.environ['CUDA_VISIBLE_DEVICES'] == str(a.gpu)
     assert (SOURCE/'SOURCE_COMMIT').read_text().strip() == TRAIN_SHA
@@ -56,22 +58,46 @@ def main():
         from zimage_distill.model import ZImageStudent, ZImageVAE, QwenPromptEncoder, noise_for
         from rdm.utils.io import save_uint8_png
         torch.set_num_threads(2)
+        from h20_portrait_checkpoint import archived_checkpoint, validate_state, load_archived_state
+        archive_proof = None
         checkpoint = EXPERIMENT/'resume.pth'
+        if a.checkpoint is not None:
+            verified = archived_checkpoint(a.step)
+            assert verified is not None, 'Archived input has not completed final-object SHA verification'
+            checkpoint, archive_proof = verified
+            assert checkpoint == a.checkpoint.resolve(), 'Requested input differs from the verified milestone'
         before = checkpoint.stat()
-        state = torch.load(checkpoint, map_location='cpu', weights_only=False, mmap=True)
+        memory_available = None
+        if archive_proof is not None:
+            def loading_progress(read_bytes, total_bytes):
+                event = dict(step=a.step, phase='archive_RAM_read', read_bytes=read_bytes,
+                             total_bytes=total_bytes, images=0)
+                atomic(folder/'progress.json', event)
+                print(json.dumps(event), flush=True)
+            state, memory_available = load_archived_state(checkpoint, archive_proof, loading_progress)
+        else:
+            state = torch.load(checkpoint, map_location='cpu', weights_only=False, mmap=True)
         after = checkpoint.stat()
-        assert (before.st_ino, before.st_size, before.st_mtime_ns) == (after.st_ino, after.st_size, after.st_mtime_ns)
-        assert state['step'] == state['schedule']['step'] == a.step
-        assert state['num_steps'] == 2 and state['sampling_args'] == SAMPLING
-        assert all(c['contract']['head_order'] == ['dinov3_l', 'qwen3vl_4b'] for c in state['critics'])
+        if archive_proof is not None:
+            assert before.st_size == after.st_size == archive_proof['bytes']
+        else:
+            assert (before.st_ino, before.st_size, before.st_mtime_ns) == (after.st_ino, after.st_size, after.st_mtime_ns)
+        validate_state(state, a.step, archived=archive_proof is not None)
         receipt = dict(training_commit=TRAIN_SHA, checkpoint=str(checkpoint), checkpoint_step=a.step,
             checkpoint_inode=before.st_ino, checkpoint_bytes=before.st_size, physical_gpu=a.gpu,
             allocator_cap_gib=32, preflight=checks, cases_sha256=digest(cases_path),
             sampling=SAMPLING, image_size=1024, seeds=[0, 1], batch_size=2,
             attention='native', decode_autocast=False, no_checkpoint_copy_or_hardlink=True,
+            checkpoint_kind='verified-independent-student' if archive_proof else 'rolling-resume',
+            checkpoint_archive_SHA256=archive_proof['sha256'] if archive_proof else None,
+            archive_load_mode='remote-process-RAM-no-disk-copy' if archive_proof else None,
+            remote_memory_headroom_before_load=memory_available,
             started_utc=datetime.datetime.now(datetime.timezone.utc).isoformat())
         atomic(folder/'preview-command.json', receipt)
         atomic(OUT/'cases.json', spec)
+        used, total = map(int, subprocess.check_output(['nvidia-smi', '-i', str(a.gpu),
+            '--query-gpu=memory.used,memory.total','--format=csv,noheader,nounits'], text=True).strip().split(','))
+        assert total-used >= 48*1024, 'GPU headroom changed during archived input load'
         torch.cuda.set_per_process_memory_fraction(32*1024**3/torch.cuda.get_device_properties(0).total_memory)
         torch.cuda.reset_peak_memory_stats()
         text = QwenPromptEncoder(device='cuda', cache_size=8, batch=2)
