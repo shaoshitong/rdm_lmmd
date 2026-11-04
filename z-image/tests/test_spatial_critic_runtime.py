@@ -221,6 +221,28 @@ class SpatialRuntimeTests(unittest.TestCase):
         self.cfg.r1_gamma = 0.0; self.cfg.critic = 'block'
         with self.assertRaisesRegex(ValueError, 'row'): self.runtime(2)
 
+    def test_two_head_gan_excludes_aim_and_averages_two_spatial_losses(self):
+        self.cfg.loss = 'ns'
+        runtime = SpatialGANRuntime(self.cfg, self.store, self.base_names, 'cpu', torch.float64,
+            critic_micro_batch=2, step_seed=19, global_remaining=(),
+            spatial_branch_specs=self.specs, spatial_options={'heads': 2})
+        self.assertEqual(runtime.names, ['dinov3_l', 'qwen3vl_4b'])
+        self.assertEqual(runtime.encoder_weight, 0.5)
+        self.assertEqual(list(runtime.critic['global'].parameters()), [])
+        values = self.inputs(requires_grad=True)
+        d = runtime.update(*values)
+        self.assertNotIn('gan/aimv2_huge/d_loss', d)
+        self.assertAlmostEqual(d['gan/d_loss'], sum(d[f'gan/{n}/d_loss'] for n in runtime.names)/2, places=12)
+        fake, _, fake_global, _, tau = values
+        loss, logs = runtime.generator_loss(fake, fake_global, tau)
+        self.assertAlmostEqual(loss.item(), sum(logs[f'gan/{n}/g_loss'] for n in runtime.names)/2, places=12)
+        loss.backward()
+        self.assertIsNone(fake_global['aimv2_huge'].grad)
+        self.assertTrue(all(torch.isfinite(v.grad).all() and v.grad.abs().sum()>0 for v in fake.values()))
+        self.assertEqual(runtime.contract['global'], [])
+        with self.assertRaisesRegex(ValueError, 'contract'):
+            self.runtime(2).load_state_dict(runtime.state_dict())
+
     def test_ns_all_three_heads_match_softplus_objective_gradients_and_raw_logit_logs(self):
         self.cfg.loss = 'ns'; self.cfg.lr = 1e-5
         whole, chunks = self.runtime(5), self.runtime(2)

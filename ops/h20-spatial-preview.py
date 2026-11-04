@@ -17,7 +17,7 @@ RUN = ROOT/'zimage/work_dirs/zimage-2step-1024-dlr1e-5-spatial-patchgan-softplus
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--step', type=int, required=True, choices=[150, 200])
+    parser.add_argument('--step', type=int, required=True, choices=[0, 150, 200])
     parser.add_argument('--gpu', type=int, required=True, choices=[6, 7])
     args = parser.parse_args()
     assert sys.platform.startswith('linux') and os.environ.get('CUDA_VISIBLE_DEVICES') == str(args.gpu)
@@ -25,7 +25,7 @@ def main():
     control = ROOT/'control/spatial-A-user-visualization'
     control.mkdir(exist_ok=True)
     frozen = control/f'step_{args.step:07d}-resume.pth'
-    if not frozen.exists():
+    if args.step and not frozen.exists():
         deadline = time.monotonic()+3600
         while time.monotonic() < deadline:
             lines=(ROOT/'launch-logs/spatial-A-500.log').read_text(errors='replace').splitlines()
@@ -36,15 +36,17 @@ def main():
             time.sleep(5)
         else:
             raise RuntimeError('Requested checkpoint did not finish within the bounded wait')
-    import torch
-    state=torch.load(frozen,map_location='cpu',weights_only=False,mmap=True)
-    assert state['step']==args.step and state['num_steps']==2
-    sampling=state['sampling_args'];assert len(sampling['sigmas'])==2 and sampling['renoise']
-    del state
+    sampling={'sigmas':[1.0,0.75],'renoise':True,'detach_between_steps':True}
+    if args.step:
+        import torch
+        state=torch.load(frozen,map_location='cpu',weights_only=False,mmap=True)
+        assert state['step']==args.step and state['num_steps']==2
+        sampling=state['sampling_args'];assert len(sampling['sigmas'])==2 and sampling['renoise']
+        del state
     out=ROOT/'visualizations/spatial-A'/f'step_{args.step:07d}'
     out.mkdir(parents=True,exist_ok=True)
     receipt={'utc':dt.datetime.now(dt.timezone.utc).isoformat(),'step':args.step,
-             'checkpoint':str(frozen),'physical_gpu':args.gpu,'sampling':sampling,
+             'checkpoint':str(frozen) if args.step else None,'physical_gpu':args.gpu,'sampling':sampling,
              'prompts':str(repo/'ops/spatial-preview-prompts.jsonl'),'seeds':[0,1],
              'image_size':1024,'training_gpus_untouched':[4,5]}
     (out/'preview-command.json').write_text(json.dumps(receipt,indent=2)+'\n')
@@ -56,9 +58,11 @@ def main():
             memory,util=map(int,values.strip().split(','))
             assert memory<=32 and util==0, f'Preview GPU not idle: {memory} MiB, {util}%'
             time.sleep(2)
-        subprocess.run([sys.executable,'-m','zimage_distill.sample',
-            '--ckpt',str(frozen),'--prompts',str(repo/'ops/spatial-preview-prompts.jsonl'),
-            '--out',str(out),'--num-steps','2','--seeds','2','--batch','2','--img-size','1024'],check=True)
+        command=[sys.executable,'-m','zimage_distill.sample',
+            '--prompts',str(repo/'ops/spatial-preview-prompts.jsonl'),
+            '--out',str(out),'--num-steps','2','--seeds','2','--batch','2','--img-size','1024']
+        if args.step: command += ['--ckpt',str(frozen)]
+        subprocess.run(command,check=True)
     expected=[out/f'{i:05d}_s{s}.png' for i in range(12) for s in [0,1]]
     assert all(p.is_file() and p.stat().st_size>1000 for p in expected)
     from PIL import Image,ImageDraw

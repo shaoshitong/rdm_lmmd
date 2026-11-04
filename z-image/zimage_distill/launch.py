@@ -201,6 +201,7 @@ def build_trainer(cfg, device: str = "cuda") -> MultiStepTrainer:
             critics = [SpatialGANRuntime(
                 dataclasses.replace(gan, seed=gan.seed+k), store, names, device=device,
                 critic_micro_batch=policy.micro_batch,
+                global_remaining=tuple(spatial_cfg.get('global_gan_encoders', ['aimv2_huge'])),
                 spatial_options={'heads': int(spatial_cfg.get('heads', 8))}) for k in range(S)]
         else:
             critics = [build_critic(dataclasses.replace(gan, seed=gan.seed + k), store, names,

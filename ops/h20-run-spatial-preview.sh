@@ -3,7 +3,7 @@ set -euo pipefail
 ROOT=/data/shaoshitong/rdm-sets
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STEP="${1:?checkpoint step}"; GPU="${2:?physical preview GPU}"
-[[ "$STEP" == 150 || "$STEP" == 200 ]]
+[[ "$STEP" == 0 || "$STEP" == 150 || "$STEP" == 200 ]]
 [[ "$GPU" == 6 || "$GPU" == 7 ]]
 mkdir -p "$ROOT/control" "$ROOT/launch-logs"
 exec >>"$ROOT/launch-logs/spatial-A-preview-$STEP.log" 2>&1

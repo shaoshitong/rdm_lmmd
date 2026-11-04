@@ -51,15 +51,16 @@ class SpatialGANRuntime:
             raise ValueError('Mixed spatial GAN requires the original DINO/SigLIP/AIM three-head panel')
         if cfg.encoders is not None and list(cfg.encoders) != self.base_encoder_names:
             raise ValueError('Mixed spatial GAN preserves all three original encoder weights; do not subset gan.encoders')
-        self.encoder_weight = 1.0 / len(self.base_encoder_names)
         self.global_names = list(global_remaining)
-        if self.global_names != ['aimv2_huge']:
-            raise ValueError('This mixed runtime preserves AIM as the remaining global GAN head')
+        if self.global_names not in ([], ['aimv2_huge']):
+            raise ValueError('Global GAN heads must be empty or the explicit legacy AIM head')
         self.spatial_specs = dict(DEFAULT_SPATIAL_BRANCHES if spatial_branch_specs is None else spatial_branch_specs)
         if set(self.spatial_specs) != {'dinov3_l', 'qwen3vl_4b'}:
             raise ValueError('Spatial GAN requires the DINO and Qwen spatial branches')
         self.spatial_names = list(self.spatial_specs)
         self.names = self.spatial_names + self.global_names
+        # GAN head normalization is independent of the three original MMD streams.
+        self.encoder_weight = 1.0 / len(self.names)
         self.seed = int(cfg.seed if step_seed is None else step_seed)
         self.text_dim = int(store.text.shape[1])
         if self.text_dim != 2560:
@@ -139,8 +140,9 @@ class SpatialGANRuntime:
 
     def _score(self, spatial, global_features, text):
         logits = self.critic['spatial'](spatial, text)
-        global_text = text if self.critic['global'].conditional else None
-        logits.update(self.critic['global'](global_features, global_text))
+        if self.global_names:
+            global_text = text if self.critic['global'].conditional else None
+            logits.update(self.critic['global'](global_features, global_text))
         return logits
 
     def _reduce_grads(self):
