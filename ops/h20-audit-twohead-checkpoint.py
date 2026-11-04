@@ -159,11 +159,12 @@ def audit(args):
                 sha.update(block)
         digest = sha.hexdigest()
     after = path.stat()
-    check((before.st_ino, before.st_size, before.st_mtime_ns) ==
-          (after.st_ino, after.st_size, after.st_mtime_ns), 'File replaced during audit; re-observe same run')
     if archive_proof is not None:
-        check(before.st_size==archive_proof['bytes'] and digest==archive_proof['sha256'],
+        check(before.st_size==after.st_size==archive_proof['bytes'] and digest==archive_proof['sha256'],
               'Final archived bytes/SHA differ from the verified saved student')
+    else:
+        check((before.st_ino, before.st_size, before.st_mtime_ns) ==
+              (after.st_ino, after.st_size, after.st_mtime_ns), 'File replaced during audit; re-observe same run')
     return {'passed': True, 'utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
             'scope': 'final-full-integrity' if args.full else 'metadata-only-no-weight-value-scan',
             'path': str(path), 'bytes': before.st_size, 'mtime_ns': before.st_mtime_ns,

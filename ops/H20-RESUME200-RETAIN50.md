@@ -49,6 +49,10 @@ completed a full24.62GB verified archive and a fresh tiny probe passed, v3 uses
 that stronger actual-archive receipt instead of repeating the redundant write.
 `h20-verify-archived-weights.py` independently reads every final-named200..500 object
 and checks its full SHA as well, with byte-progress and true-exit receipts.
+The first independent final-object pass matched its complete SHA but rejected a
+ks3fs mtime-cache refresh. The verifier now requires stable exact size plus the
+complete expected content SHA; synthetic object-store inode/mtime changes alone
+do not invalidate matching bytes. Local resume files retain strict inode/mtime checks.
 
 Logs: `launch-logs/twohead-lr10-resume200-500-v3.log`,
 `launch-logs/twohead-retain50-archive.log`.

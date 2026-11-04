@@ -6,6 +6,13 @@ ROOT = pathlib.Path('/data/shaoshitong/rdm-sets')
 CONTROL = ROOT/'control/twohead-retain50-archive'
 
 
+def verify_content_identity(before, after, read_bytes, expected_bytes, actual_sha, expected_sha):
+    # ks3fs may refresh synthetic inode/mtime metadata while reading an unchanged
+    # object. The complete expected SHA and byte count remain the identity check.
+    assert before.st_size == after.st_size == read_bytes == expected_bytes, 'Archived size changed'
+    assert actual_sha == expected_sha, 'Final archived object SHA differs'
+
+
 def write(name, value):
     p = CONTROL/name; tmp = p.with_name(p.name+'.partial')
     tmp.write_text(json.dumps(value, indent=2)+'\n'); os.replace(tmp, p)
@@ -35,9 +42,11 @@ def main():
                         step=step, read_bytes=read, total_bytes=before.st_size,
                         verified_steps=[r['step'] for r in results], updated_epoch=time.time()))
         assert read == expected['bytes'] and h.hexdigest() == expected['sha256'], 'Final archived object SHA differs'
-        after = path.stat(); assert before.st_size == after.st_size and before.st_mtime_ns == after.st_mtime_ns
+        after = path.stat()
+        verify_content_identity(before, after, read, expected['bytes'], h.hexdigest(), expected['sha256'])
         receipt = dict(passed=True, step=step, path=str(path), bytes=read, sha256=h.hexdigest(),
-            verified_epoch=time.time(), scope='full final-named remote object SHA readback')
+            verified_epoch=time.time(), scope='full final-named remote object SHA readback',
+            mtime_before_ns=before.st_mtime_ns, mtime_after_ns=after.st_mtime_ns)
         write(f'checkpoint-final-readback-{step}.json', receipt); results.append(receipt)
         print(json.dumps(receipt), flush=True)
     write('checkpoint-final-readback-complete.json', dict(passed=True, weights=results))

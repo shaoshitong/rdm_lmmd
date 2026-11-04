@@ -66,3 +66,17 @@ def test_failed_remote_flush_preserves_source(tmp_path):
     assert source.read_bytes() == b'only-unique-model'
     assert not (tmp_path/'archive'/source.name).exists()
     assert not (tmp_path/'proof.json').exists()
+
+
+def test_object_metadata_refresh_requires_complete_content_identity():
+    import types
+    helper_spec = importlib.util.spec_from_file_location('archive_verifier_under_test',
+        Path(__file__).resolve().parents[1]/'ops/h20-verify-archived-weights.py')
+    helper = importlib.util.module_from_spec(helper_spec); helper_spec.loader.exec_module(helper)
+    before = types.SimpleNamespace(st_size=100, st_mtime_ns=10)
+    after = types.SimpleNamespace(st_size=100, st_mtime_ns=20)
+    helper.verify_content_identity(before, after, 100, 100, 'correct-sha', 'correct-sha')
+    with pytest.raises(AssertionError, match='SHA'):
+        helper.verify_content_identity(before, after, 100, 100, 'bad-sha', 'correct-sha')
+    with pytest.raises(AssertionError, match='size'):
+        helper.verify_content_identity(before, after, 99, 100, 'correct-sha', 'correct-sha')
