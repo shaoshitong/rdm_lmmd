@@ -23,7 +23,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('metrics', type=Path)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--smooth', type=int, default=10)
     args = parser.parse_args()
+    assert args.smooth >= 1
     data = json.loads(args.metrics.read_text())
     rows = data['rows']
     steps = np.array([row['step'] for row in rows])
@@ -49,7 +51,7 @@ def main():
         y = np.array([row[key] for row in valid], dtype=float)
         assert np.isfinite(y).all(), key
         ax.plot(x, y, color=color, alpha=.26, linewidth=1)
-        ax.plot(x, smooth(y), color=color, linewidth=2, label=label)
+        ax.plot(x, smooth(y, args.smooth), color=color, linewidth=2, label=label)
         if len(y) == 1:
             ax.scatter(x, y, color=color, s=18)
 
@@ -99,10 +101,17 @@ def main():
         ax.xaxis.get_major_locator().set_params(integer=True)
         if has_adv:
             ax.axvline(50.5, color='#8a9299', linewidth=1, linestyle='--', alpha=.8)
+        for action in data.get('D_lr_actions', []):
+            ax.axvline(action['effective_from_step']-.5, color='#9950a2',
+                       linewidth=1, linestyle=':', alpha=.8)
     fig.suptitle(f'Two-step A training losses | iterations 1–{steps[-1]}',
                  x=.09, ha='left', y=.97, fontsize=18, fontweight='medium')
-    fig.text(.09, .932, 'Thin lines: every recorded iteration     Solid lines: trailing 5-iteration mean',
+    fig.text(.09, .932, f'Thin lines: every recorded iteration     Solid lines: trailing {args.smooth}-iteration mean',
              fontsize=10, color='#515c66')
+    events = ['Dashed: GAN-G starts at 51']
+    events.extend(f"Dotted: D LR {a['old_lr']:g} to {a['new_lr']:g} from {a['effective_from_step']}"
+                  for a in data.get('D_lr_actions', []))
+    fig.text(.09, .908, '     |     '.join(events), fontsize=9, color='#515c66')
     fig.text(.09, .028, 'GAN: DINOv3 + Qwen-VL.  MMD: DINOv3 + SigLIP2 + AIMv2.  GAN-G begins at iteration 51.',
              fontsize=10, color='#515c66')
     fig.text(.09, .009, 'Snapshot '+data['observed_utc']+'  |  training source '+data['source_commit'][:12],
@@ -111,7 +120,7 @@ def main():
     files = []
     for ext in ('png', 'pdf'):
         path = args.output.with_suffix('.'+ext)
-        fig.savefig(path, dpi=180)
+        fig.savefig(path, dpi=240)
         files.append(str(path.resolve()))
     plt.close(fig)
     print(json.dumps({'last_iteration': int(steps[-1]), 'points': len(rows),
