@@ -18,4 +18,4 @@ export CUDA_VISIBLE_DEVICES="$GPU" OMP_NUM_THREADS=2 PYTHONUNBUFFERED=1
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export PYTHONPATH=/data/shaoshitong/RDM-twohead-lr10-v1/z-image:/data/shaoshitong/RDM-twohead-lr10-v1
 cd /data/shaoshitong/RDM-twohead-lr10-v1
-"$ROOT/envs/rdm/bin/python" "$REPO/ops/h20-preview-twohead50.py" --gpu "$GPU" --cap-gib 32
+timeout --signal=TERM --kill-after=30s 1800s "$ROOT/envs/rdm/bin/python" "$REPO/ops/h20-preview-twohead50.py" --gpu "$GPU" --cap-gib 32
