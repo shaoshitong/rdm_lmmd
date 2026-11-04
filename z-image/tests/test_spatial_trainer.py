@@ -165,7 +165,8 @@ class ToyReferenceImages:
 
 
 def build(root, *, spatial=True, micro=2, critic_micro=2, weight=1.5, warmup=0,
-          lr=0.005, step_weights=(0.25, 1.0)):
+          lr=0.005, step_weights=(0.25, 1.0), adaptive_d_lr=None, gan_loss='hinge',
+          d_lr=0.002, allow_legacy_adaptive=False, global_gan=('aimv2_huge',)):
     store = ZImageReferenceStore(root, NAMES)
     generator = ToyGenerator()
     kwargs = dict(encoders=list(NAMES), num_steps=2, step_weights=list(step_weights),
@@ -181,12 +182,14 @@ def build(root, *, spatial=True, micro=2, critic_micro=2, weight=1.5, warmup=0,
         return MultiStepTrainer(generator, battery, store, schedule, optimizer, **kwargs)
     critics = [SpatialGANRuntime(
         GANConfig(enabled=True, hidden=8, depth=1, spectral_norm=False, stats_rows=16,
-                  g_start_step=warmup, weight=weight, lr=0.002, seed=k),
+                  g_start_step=warmup, weight=weight, lr=d_lr, loss=gan_loss, seed=k),
         store, list(NAMES), dtype=torch.float32, critic_micro_batch=critic_micro,
-        spatial_branch_specs=SPECS, spatial_options={'heads': 2}) for k in range(2)]
+        spatial_branch_specs=SPECS, spatial_options={'heads': 2},
+        global_remaining=global_gan) for k in range(2)]
     return SpatialMultiStepTrainer(generator, battery, store, schedule, optimizer,
                                    critics=critics, spatial_battery=ToySpatialBattery(),
-                                   reference_images=ToyReferenceImages(), **kwargs)
+                                   reference_images=ToyReferenceImages(), adaptive_d_lr=adaptive_d_lr,
+                                   adaptive_d_lr_allow_legacy_resume=allow_legacy_adaptive, **kwargs)
 
 
 def _assert_aligned(trainer):
@@ -302,6 +305,48 @@ def test_checkpoint_load_preserves_both_windows_and_next_update(store_root):
     changed['spatial_gan_contract']['representations']['encoders']['qwen3vl_4b']['grid'] = 7
     with pytest.raises(RuntimeError, match='representation/reference'):
         resumed.load_state_dict(changed)
+
+
+@pytest.mark.parametrize('global_gan', [('aimv2_huge',), ()])
+def test_enabled_controller_uses_real_losses_and_preserves_mmd_generator_and_resume(store_root, global_gan):
+    policy = {'enabled': True, 'window_size': 2, 'volatility_min_jumps': 1,
+              'min_lr': 1e-6, 'max_lr': 0.01, 'volatility_ratio': 1e9,
+              'volatility_abs_range': 1e9, 'min_abs_change': 1e9}
+    controlled = build(store_root, gan_loss='ns', adaptive_d_lr=policy, global_gan=global_gan)
+    unchanged = build(store_root, gan_loss='ns', global_gan=global_gan)
+    for trainer in (controlled, unchanged):
+        trainer.bootstrap()
+    for index in range(1, 4):
+        actual, reference = controlled.step(), unchanged.step()
+        assert actual['gan/d_lr_used'] == actual['gan/d_lr_next'] == 0.002
+        assert controlled.d_lr_controller.last_completed_step == index
+        assert len(controlled.d_lr_controller.head_keys) == 2 * (2 + len(global_gan))
+        assert set(controlled.battery.weights) == set(NAMES)
+        for k in (1, 2):
+            assert actual[f's{k}/gan/g_metric_scope'] == 'global_active_rows'
+            assert actual[f's{k}/gan/g_rows_global'] == B
+            assert actual[f's{k}/gan/qwen3vl_4b/g_loss'] >= 0
+        assert actual['force'] == pytest.approx(reference['force'], rel=1e-7)
+        assert actual['loss_total'] == pytest.approx(reference['loss_total'], rel=1e-7)
+        for p, q in zip(controlled.generator.model.parameters(), unchanged.generator.model.parameters()):
+            torch.testing.assert_close(p, q, rtol=0, atol=0)
+    snapshot = copy.deepcopy(controlled.state_dict())
+    resumed = build(store_root, gan_loss='ns', adaptive_d_lr=policy, global_gan=global_gan)
+    assert resumed.load_state_dict(snapshot)['adaptive_d_lr'] == 'restored'
+    assert resumed.d_lr_controller.state_dict() == controlled.d_lr_controller.state_dict()
+    left, right = controlled.step(), resumed.step()
+    assert left['gan/d_lr_control'] == right['gan/d_lr_control']
+    assert left['loss_total'] == pytest.approx(right['loss_total'], rel=2e-6)
+    legacy = copy.deepcopy(snapshot)
+    del legacy['adaptive_d_lr']
+    with pytest.raises(RuntimeError, match='Legacy checkpoint'):
+        build(store_root, gan_loss='ns', adaptive_d_lr=policy, global_gan=global_gan).load_state_dict(legacy)
+    explicit = build(store_root, gan_loss='ns', adaptive_d_lr=policy,
+                     allow_legacy_adaptive=True, global_gan=global_gan)
+    assert explicit.load_state_dict(legacy)['adaptive_d_lr'] == 'explicit_legacy_bootstrap'
+    assert explicit.d_lr_controller.last_completed_step == 0
+    with pytest.raises(RuntimeError, match='silently disable'):
+        build(store_root, gan_loss='ns', global_gan=global_gan).load_state_dict(snapshot)
 
 
 @pytest.mark.parametrize('micro,critic_micro', [(1, 1), (4, 3)])

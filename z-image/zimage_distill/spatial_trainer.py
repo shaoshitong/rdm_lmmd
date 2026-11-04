@@ -15,7 +15,9 @@ from rdm.sw_lmmd.sharding import (
     all_gather_detached, all_reduce_mean_, partition_rows, reduce_scalar, row_noise,
 )
 from rdm.sw_lmmd.spatial_cache import SpatialWindowCache
+from rdm.sw_lmmd.adaptive_d_lr import AdaptiveDLRConfig, AdaptiveDLRController
 from rdm.train.pixel_grad_caching import pixel_gradcache_backward
+from rdm.utils.distributed import get_rank, is_dist
 
 from .model import reference_pixels
 from .store import split_stream, stream_name
@@ -27,7 +29,8 @@ def patch_stream(step, encoder):
 
 
 class SpatialMultiStepTrainer(MultiStepTrainer):
-    def __init__(self, *args, spatial_battery, reference_images, **kwargs):
+    def __init__(self, *args, spatial_battery, reference_images, adaptive_d_lr=None,
+                 adaptive_d_lr_allow_legacy_resume=False, **kwargs):
         super().__init__(*args, **kwargs)
         if not self.joint or not self.feature_quantize:
             raise ValueError('Spatial GAN requires Qwen text joint MMD and shared PNG quantization')
@@ -48,6 +51,58 @@ class SpatialMultiStepTrainer(MultiStepTrainer):
                                  'reference': real_contract,
                                  'index_sha256': reference_images.manifest['index']['sha256'],
                                  'cache_dtype': 'bfloat16', 'balance_space': 'decoded-image-pixels'}
+        self.d_lr_config = AdaptiveDLRConfig.from_mapping(adaptive_d_lr or {})
+        self.d_lr_controller = None
+        if self.d_lr_config.enabled:
+            if any(runtime.cfg.loss != 'ns' for runtime in self.step_critics):
+                raise ValueError('Adaptive spatial D LR requires the NS softplus loss')
+            base_lr = float(self.step_critics[0].cfg.lr)
+            if any(float(runtime.cfg.lr) != base_lr for runtime in self.step_critics):
+                raise ValueError('Adaptive D LR requires one shared base LR for every step')
+            heads = tuple(self.step_critics[0].names)
+            if any(tuple(runtime.names) != heads for runtime in self.step_critics):
+                raise ValueError('Adaptive D LR requires the same GAN heads in both steps')
+            self.d_lr_controller = AdaptiveDLRController(base_lr=base_lr, cfg=self.d_lr_config, heads=heads)
+        if not isinstance(adaptive_d_lr_allow_legacy_resume, bool):
+            raise ValueError('adaptive_d_lr_allow_legacy_resume must be a boolean')
+        self.adaptive_d_lr_allow_legacy_resume = adaptive_d_lr_allow_legacy_resume
+
+    def _adapt_discriminator_lr(self, logs):
+        """Apply rank-0's audited decision for the NEXT iteration, never the G LR."""
+        if self.d_lr_controller is None:
+            return
+        current = self.d_lr_controller.current_lr
+        for runtime in self.step_critics:
+            if any(float(group['lr']) != current for group in runtime.optimizer.param_groups):
+                raise RuntimeError('D optimizer LR differs from the saved adaptive controller')
+        active = all(bool(logs.get(f's{k}/gan/g_active', False))
+                     for k in range(1, self.num_steps + 1))
+        valid = not logs['skipped'] and not any(
+            logs[f's{k}/gan/d_skipped'] for k in range(1, self.num_steps + 1))
+        heads = {}
+        for k, runtime in enumerate(self.step_critics, 1):
+            for name in runtime.names:
+                prefix = f's{k}/gan/{name}'
+                heads[f's{k}/{name}'] = {
+                    'd_loss': logs[f'{prefix}/d_loss'],
+                    'g_loss': logs.get(f'{prefix}/g_loss') if active else None,
+                    'g_proxy': logs.get(f'{prefix}/g_proxy_pre_d_window')}
+        packet = [None]
+        if get_rank() == 0:
+            decision = self.d_lr_controller.observe(logs['step'], heads,
+                                                    generator_active=active, valid=valid)
+            packet[0] = (decision, self.d_lr_controller.state_dict())
+        if is_dist():
+            torch.distributed.broadcast_object_list(packet, src=0)
+        decision, state = packet[0]
+        if get_rank() != 0:
+            self.d_lr_controller.load_state_dict(state)
+        new_lr = float(decision['new_lr'])
+        for runtime in self.step_critics:
+            for group in runtime.optimizer.param_groups:
+                group['lr'] = new_lr
+        logs.update({'gan/d_lr_used': current, 'gan/d_lr_next': new_lr,
+                     'gan/d_lr_control': decision})
 
     def _generate_images(self, row_ids):
         ids = np.asarray(row_ids, dtype=np.int64)
@@ -235,6 +290,7 @@ class SpatialMultiStepTrainer(MultiStepTrainer):
         for key in _PRINTED_GAN_KEYS:
             if f's{self.num_steps}/{key}' in logs:
                 result[key] = logs[f's{self.num_steps}/{key}']
+        self._adapt_discriminator_lr(result)
         self._last_logs = result
         return result
 
@@ -243,6 +299,8 @@ class SpatialMultiStepTrainer(MultiStepTrainer):
         state['spatial_gan_contract'] = self.spatial_contract
         if with_cache:
             state['spatial_cache'] = self.spatial_cache.state_dict()
+        if self.d_lr_controller is not None:
+            state['adaptive_d_lr'] = self.d_lr_controller.state_dict()
         return state
 
     def load_state_dict(self, state):
@@ -250,8 +308,22 @@ class SpatialMultiStepTrainer(MultiStepTrainer):
             raise RuntimeError('Spatial GAN checkpoint representation/reference contract mismatch')
         if state.get('cache') is not None and state.get('spatial_cache') is None:
             raise RuntimeError('A global generated cache requires its aligned spatial window')
+        controller_state = state.get('adaptive_d_lr')
+        if controller_state is not None and self.d_lr_controller is None:
+            raise RuntimeError('Cannot silently disable an active adaptive D LR on resume')
+        if self.d_lr_controller is not None:
+            if controller_state is None and not self.adaptive_d_lr_allow_legacy_resume:
+                raise RuntimeError('Legacy checkpoint has no adaptive D LR history; migration must be explicit')
+            if controller_state is not None:
+                self.d_lr_controller.load_state_dict(controller_state)
         result = super().load_state_dict(state)
         if 'spatial_cache' in state:
             self.spatial_cache.load_state_dict(state['spatial_cache'])
         result['spatial_cache'] = 'spatial_cache' in state
+        if self.d_lr_controller is not None:
+            expected = self.d_lr_controller.current_lr
+            if any(float(group['lr']) != expected for runtime in self.step_critics
+                   for group in runtime.optimizer.param_groups):
+                raise RuntimeError('Restored D optimizer LR disagrees with adaptive controller/base LR')
+            result['adaptive_d_lr'] = 'restored' if controller_state is not None else 'explicit_legacy_bootstrap'
         return result

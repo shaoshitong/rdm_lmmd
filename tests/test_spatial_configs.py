@@ -98,3 +98,36 @@ def test_spatial_a_b_still_differ_only_in_first_step_weight_and_experiment_name(
     b['exp_name'] = a['exp_name']
     b['student']['step_weights'] = a['student']['step_weights']
     assert b == a
+
+
+def test_adaptive_variant_preserves_every_existing_a_setting():
+    base = _read('', True)
+    adaptive = yaml.safe_load((CONFIGS/'zimage_2step_1024_spatial_patchgan_adaptive_h20_fa3.yaml').read_text())
+    policy = adaptive.pop('adaptive_d_lr')
+    assert adaptive.pop('adaptive_d_lr_allow_legacy_resume') is False
+    assert adaptive == base, f'Adaptive policy changed unrelated settings: {_differences(base, adaptive)}'
+    assert policy['enabled'] is True
+    assert policy['window_size'] == 10 and policy['cooldown_steps'] == 20
+    assert policy['min_lr'] == 1e-7 and policy['max_lr'] == 2e-5
+    assert policy['decrease_factor'] == 0.5 and policy['increase_factor'] == 1.25
+    assert policy['min_abs_change'] == 0.05 and policy['min_relative_change'] == 0.20
+
+
+def test_two_head_variants_preserve_three_mmd_streams_and_every_other_setting():
+    legacy = _read('', True)
+    two = yaml.safe_load((CONFIGS/'zimage_2step_1024_twohead_patchgan_h20_fa3.yaml').read_text())
+    adaptive = yaml.safe_load((CONFIGS/'zimage_2step_1024_twohead_patchgan_adaptive_h20_fa3.yaml').read_text())
+    assert two['encoders'] == adaptive['encoders'] == GLOBAL_ENCODERS
+    assert two['spatial_gan']['global_gan_encoders'] == []
+    assert adaptive['spatial_gan']['global_gan_encoders'] == []
+    compared = copy.deepcopy(two)
+    compared['exp_name'] = legacy['exp_name']
+    del compared['spatial_gan']['global_gan_encoders']
+    assert compared == legacy, _differences(legacy, compared)
+    assert adaptive['adaptive_d_lr'] == yaml.safe_load(
+        (CONFIGS/'zimage_2step_1024_spatial_patchgan_adaptive_h20_fa3.yaml').read_text())['adaptive_d_lr']
+    assert adaptive.pop('adaptive_d_lr_allow_legacy_resume') is False
+    del adaptive['adaptive_d_lr']
+    assert adaptive['exp_name'] != two['exp_name']
+    adaptive['exp_name'] = two['exp_name']
+    assert adaptive == two, _differences(two, adaptive)

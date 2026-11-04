@@ -122,11 +122,20 @@ def build_trainer(cfg, device: str = "cuda") -> MultiStepTrainer:
     from rdm.representation.registry import by_name
     spatial_cfg = _block(cfg, 'spatial_gan')
     spatial_enabled = bool(spatial_cfg.get('enabled', False))
+    from rdm.sw_lmmd.adaptive_d_lr import AdaptiveDLRConfig
+    adaptive_policy = AdaptiveDLRConfig.from_mapping(_block(cfg, 'adaptive_d_lr'))
 
     window = window_from_config(cfg)
     if window.group_by_prompt:
         raise ValueError("the Z-Image trainer is ungrouped (as K128 · GAN)")
     policy = memory_from_config(cfg)
+    if adaptive_policy.enabled and not spatial_enabled:
+        raise ValueError('adaptive_d_lr is supported only by the spatial GAN trainer')
+    if policy.shard == 'fsdp' and getattr(cfg, 'resume_from', None):
+        from pathlib import Path
+        if not getattr(cfg, 'load_from', None) or \
+                Path(cfg.load_from).resolve() != Path(cfg.resume_from).resolve():
+            raise ValueError('FSDP resume requires load_from and resume_from to name the same frozen checkpoint')
     batching = resolve_batching(cfg, policy, window)
     student = student_from_config(cfg)
     S = student["num_steps"]
@@ -225,6 +234,8 @@ def build_trainer(cfg, device: str = "cuda") -> MultiStepTrainer:
                                       str(Path(cfg.reference_root).parent/'reference_images_patchgan'))
         real_images = ReferenceImageStore(images_path)
         extra = {'reference_images': real_images,
+                 'adaptive_d_lr': _block(cfg, 'adaptive_d_lr'),
+                 'adaptive_d_lr_allow_legacy_resume': getattr(cfg, 'adaptive_d_lr_allow_legacy_resume', False),
                  'spatial_battery': SpatialBattery(
                      device=device, qwen_snapshot=spatial_cfg.get('qwen_snapshot'),
                      max_real_rows=int(spatial_cfg.get('real_cache_rows', window.size)),
