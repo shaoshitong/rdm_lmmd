@@ -38,9 +38,14 @@ to be released. It raises before writing if the worker failed or space cannot be
 recovered within20minutes. The archiver closes the training-lock descriptor so an
 archive process cannot accidentally keep the training lock after a later stop.
 
-Logs: `launch-logs/twohead-lr10-resume200-500.log`,
+The first resume startup was rejected before any training iteration because the
+existing FSDP guard requires `load_from == resume_from`. The corrected v2 entry
+passes both paths, keeps that failed attempt's logs, and reuses its already-running
+verified-destination archiver instead of launching a duplicate copy job.
+
+Logs: `launch-logs/twohead-lr10-resume200-500-v2.log`,
 `launch-logs/twohead-retain50-archive.log`.
-True exits: `control/twohead-lr10-resume200-500.exit`,
+True exits: `control/twohead-lr10-resume200-500-v2.exit`,
 `control/twohead-retain50-archive/checkpoint-archive-worker.exit`.
 Per-stage byte/SHA receipts: `control/twohead-retain50-archive/checkpoint-archive-N.json`.
 All weights remain remote; Mac receives only source/docs and small audit summaries.

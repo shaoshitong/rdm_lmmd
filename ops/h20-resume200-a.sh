@@ -6,7 +6,7 @@ CONFIG=z-image/configs/zimage_2step_1024_twohead_glr10_h20_fa3.yaml
 EXP="$ROOT/zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A"
 ARCHIVE=/mnt/airs-business/shaoshitong/rdm-sets/checkpoints/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A
 ARCHIVE_CONTROL="$ROOT/control/twohead-retain50-archive"
-PREFIX=twohead-lr10-resume200-500
+PREFIX=twohead-lr10-resume200-500-v2
 mkdir -p "$ROOT/control" "$ROOT/launch-logs" "$ARCHIVE_CONTROL"
 exec >>"$ROOT/launch-logs/$PREFIX.log" 2>&1
 RUN_DIR="$ROOT/control/$PREFIX-runs/$(date -u +%Y%m%dT%H%M%SZ)-$$"
@@ -79,7 +79,7 @@ def read_gpus():
  return [list(map(int,x.split(','))) for x in subprocess.check_output(['nvidia-smi','-i','4,5','--query-gpu=index,memory.used,memory.total,utilization.gpu','--format=csv,noheader,nounits'],text=True).splitlines()]
 idle=wait_for_idle_gpus(read_gpus,time.sleep,time.monotonic)
 assert all(memory<=32 and util==0 for _,memory,total,util in idle)
-command=[str(root/'envs/rdm/bin/torchrun'),'--standalone','--nproc-per-node=2','-m','zimage_distill.launch','z-image/configs/zimage_2step_1024_twohead_glr10_h20_fa3.yaml','--set','memory.micro_batch=2','--set','save_freq=50','--set','resume_from='+str(exp/'resume.pth'),'--set','checkpoint_archive_dir='+str(archive),'--set','checkpoint_archive_control='+str(archive_control)]
+command=[str(root/'envs/rdm/bin/torchrun'),'--standalone','--nproc-per-node=2','-m','zimage_distill.launch','z-image/configs/zimage_2step_1024_twohead_glr10_h20_fa3.yaml','--set','memory.micro_batch=2','--set','save_freq=50','--set','resume_from='+str(exp/'resume.pth'),'--set','load_from='+str(exp/'resume.pth'),'--set','checkpoint_archive_dir='+str(archive),'--set','checkpoint_archive_control='+str(archive_control)]
 receipt=dict(source=str(repo),source_commit=(repo/'SOURCE_COMMIT').read_text().strip(),command=command,
  created_epoch=time.time(),formal_training=True,physical_gpus=[4,5],steps=500,resume_from_step=200,
  prior_source=str(old),prior_source_commit='a25e4c42794b13d5c881d3f1994944929b019190',
@@ -92,17 +92,27 @@ PY
 if [[ ! -f "$EXP/step_0000200.pth" && ! -f "$ARCHIVE_CONTROL/checkpoint-archive-200.json" ]]; then
   CUDA_VISIBLE_DEVICES='' "$PYTHON" "$REPO/ops/h20-export-student200.py"
 fi
+ARCHIVE_ACTIVE=0
 if [[ -f "$ARCHIVE_CONTROL/checkpoint-archive-worker.pid" ]]; then
   prior="$(cat "$ARCHIVE_CONTROL/checkpoint-archive-worker.pid")"
-  if kill -0 "$prior" 2>/dev/null; then echo 'Existing archive worker active'; exit 5; fi
+  if kill -0 "$prior" 2>/dev/null; then
+    "$PYTHON" - "$prior" "$EXP" "$ARCHIVE" <<'PY'
+import pathlib,sys
+cmd=pathlib.Path('/proc/'+sys.argv[1]+'/cmdline').read_bytes().split(b'\0')
+assert b'rdm.sw_lmmd.checkpoint_archive' in cmd and sys.argv[2].encode() in cmd and sys.argv[3].encode() in cmd
+PY
+    ARCHIVE_ACTIVE=1
+  fi
 fi
+if [[ "$ARCHIVE_ACTIVE" == 0 ]]; then
 CUDA_VISIBLE_DEVICES='' OMP_NUM_THREADS=1 setsid "$PYTHON" -m rdm.sw_lmmd.checkpoint_archive \
   --source-dir "$EXP" --archive-dir "$ARCHIVE" --control-dir "$ARCHIVE_CONTROL" \
   >>"$ROOT/launch-logs/twohead-retain50-archive.log" 2>&1 < /dev/null 9>&- &
 printf '%s\n' "$!" >"$ARCHIVE_CONTROL/checkpoint-archive-worker.pid"
+fi
 "$ROOT/envs/rdm/bin/torchrun" --standalone --nproc-per-node=2 \
   -m zimage_distill.launch "$CONFIG" --set memory.micro_batch=2 --set save_freq=50 \
-  --set "resume_from=$EXP/resume.pth" --set "checkpoint_archive_dir=$ARCHIVE" \
+  --set "resume_from=$EXP/resume.pth" --set "load_from=$EXP/resume.pth" --set "checkpoint_archive_dir=$ARCHIVE" \
   --set "checkpoint_archive_control=$ARCHIVE_CONTROL" &
 CHILD_PID=$!
 printf '%s\n' "$CHILD_PID" >"$RUN_DIR/torchrun.pid"
