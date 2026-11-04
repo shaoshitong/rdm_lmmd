@@ -35,6 +35,15 @@ Logs and true exits: `launch-logs/twohead-qib-portraits-*.log`,
 `control/twohead-qib-portraits-*.exit`. Each comparison page is2048px wide;
 each source tile remains1024x1024 and is pixel-compared after PNG save/readback.
 
+`ops/local-control/h20-fetch-native-portrait-pages.py --verification <stage-verification.json>
+--output <local-final-directory> --ssh-helper <existing-h20-recovery-ssh.py>` retrieves
+only the four completed PNG comparison pages requested for viewing. The stage verification
+must contain `actual_exit:0` and its `proof` with passed native pixel-equality checks.
+The helper checks the exact remote directory, four filenames, maximum PNG size, native
+2048x4416 dimensions, bytes and SHA on both ends. Existing matching final pages are reused.
+The original PNG bytes remain unchanged; this does not copy weights or run inference.
+Only these user-requested final local images and a small receipt are retained on the Mac.
+
 `h20-plot-twohead-loss.py` plots only existing logged scalars, omits inactive
 GAN-G warmup entries, retains raw spikes, overlays a trailing10-iteration mean,
 and marks every recorded D learning-rate action at its effective iteration.
