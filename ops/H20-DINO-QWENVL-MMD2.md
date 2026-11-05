@@ -45,3 +45,17 @@ new reference, sufficient remote checkpoint/cache space and a real two-GPU
 D/G-active smoke gate. Reinitialize from official pretrained0 after smoke; do not
 carry its updates or warm from350/400. Normal commits/main push and full Mac
 code/docs backup are required; all weights/features/environments stay remote.
+
+`bash ops/h20-run-dino-qwenvl-mmd2.sh` is the source-bound handoff controller.
+It runs changed-path CPU checks with CUDA hidden while350 judging continues.
+It waits for real benchmark exit0/full output, complete new reference and verified
+judge-cache offload, then requires62GB local staging headroom and acquires the
+existing run lock. It runs only the existing group2/micro2 real smoke:3 complete
+D/G-active iterations and retained-window probe/refresh. It validates exact MMD2
+and GAN2 identities, finite non-skipped updates and measured memory headroom.
+The smoke process exits before formal fresh0 initialization. No smoke updates
+carry into training, whose GAN warmup remains50 and whose full budget remains500.
+The archiver starts at50 and preserves every50..500 student with full final-named
+SHA verification. Failure exits retain command, stage exit and logs; the controller
+does not retry/restart formal training. Final full-resume audit and reporting are
+separate from proving training/weight retention complete.

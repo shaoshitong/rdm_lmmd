@@ -117,6 +117,7 @@ if rank == 0:
               'probe_refresh': extra, 'probe_refresh_contract': probe_contract, 'spatial_patchgan': spatial_enabled,
               'generation_steps': trainer.num_steps, 'world_size': world,
               'gan_heads': gan_heads,
+              'MMD_encoders': list(trainer.base_names),
               'spatial_feature_contract': getattr(trainer, 'spatial_contract', None),
               'source_commit': (Path(__file__).resolve().parents[1]/'SOURCE_COMMIT').read_text().strip(),
               'config': str(Path(a.config).resolve()),
