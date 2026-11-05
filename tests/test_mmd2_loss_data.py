@@ -9,7 +9,7 @@ m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 def row(step):
     r=dict(step=step,skipped=False,grad_norm=1.,lr=2.83e-5)
     for k in [1,2]:
-        r.update({f's{k}/gan/d_skipped':False,f's{k}/gan/g_active':step>50})
+        r.update({f's{k}/gan/d_skipped':False,f's{k}/gan/g_active':step>50,f's{k}/gan/d_loss':1.})
         for name in m.NAMES:
             r.update({f's{k}/{name}/mmd2':.01,f's{k}/gan/{name}/d_loss':1.})
             if step>50:r[f's{k}/gan/{name}/g_loss']=1.

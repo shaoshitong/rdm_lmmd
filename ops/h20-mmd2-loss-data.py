@@ -25,7 +25,7 @@ def validate_rows(rows):
                 if k.startswith(f's{step}/') and k.endswith('/mmd2')}
             assert keys==set(NAMES),'Actual MMD streams disagree with DINO/Qwen-only contract'
             heads={k.removeprefix(f's{step}/gan/').removesuffix('/d_loss') for k in row
-                if k.startswith(f's{step}/gan/') and k.endswith('/d_loss')}
+                if k.startswith(f's{step}/gan/') and k.endswith('/d_loss') and k.count('/')==3}
             assert heads==set(NAMES),'Actual GAN heads disagree with DINO/Qwen-only contract'
             for name in NAMES:
                 assert row[f's{step}/{name}/mmd2']>=-1e-6
