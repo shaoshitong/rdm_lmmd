@@ -56,6 +56,16 @@ def main():
         stages[name] = dict(pid=c['pid'] if c else None,
             live_command=live(c['pid']) if c else None, actual_exit=read(RUN/'logs'/f'{name}.exit.json'),
             log_bytes=log.stat().st_size if log.exists() else 0)
+        if name.startswith('generate'):
+            events=[]
+            for line in tail(log,50000).splitlines():
+                try:
+                    value=json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(value,dict) and 'event' in value:
+                    events.append(value)
+            stages[name]['latest_actual_event']=events[-1] if events else None
     assets_text = tail(RUN/'logs/assets.log')
     aria = re.findall(r'\[#[^\r\n]*?\d+(?:\.\d+)?[KMGT]?i?B/[^\r\n]*?\]',assets_text)
     weights = [dict(name=p.name,logical_bytes=p.stat().st_size,allocated_bytes=p.stat().st_blocks*512)
