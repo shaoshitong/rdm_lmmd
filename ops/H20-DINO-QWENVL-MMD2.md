@@ -74,3 +74,16 @@ The source run remains on the node. `h20-finalize-qib350-mmd2.py` waits for thes
 existing processes and runs preservation/final integrity in sequence; it cannot
 launch or restart training/evaluation. Final curves and a read-back of actual
 scores/integrity are still required before declaring the overall goal complete.
+
+Loss exports for this successor use the separate read-only scalar reader
+`ops/local-control/h20-mmd2-loss-snapshot.py` through the existing SSH helper and
+`ops/h20-plot-mmd2-loss.py` locally. The reader binds immutable trainingv3/source
+and passed fresh0 preflight, includes only complete actual JSONL iterations and
+records its config/log-prefix hashes. A not-started/initializing response does
+not produce a graph. The stdlib contract checks actual MMD and GAN metric names
+in every row, rejecting historical SigLIP/AIM data even if metadata was relabeled.
+Both generation steps show softplus D, active-only softplus G and two-encoder
+MMD, plus G training surrogate and the existing global grad_norm. Warmup proxy
+values never appear as active G losses. Moving means are trailing10 iterations;
+vertical D LR markers come only from actual controller actions. Output is a
+standalone PNG/PDF; no extra training metrics/hooks or fake new-run plots.
