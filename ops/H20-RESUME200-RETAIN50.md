@@ -123,3 +123,25 @@ run `500 --full`, then `500 --student --full --file <verified-archived-student50
 The underlying auditor still rejects premature full/student scans. Poll small log/status
 reads instead of holding an SSH query open. Archived full scans emit RAM-read progress
 before the final integrity JSON, so parse the final result after actual audit exit0.
+
+## Shared preview lock and six-stage comparison
+
+An extra authorized200 preview held the GPU6 preview lock when the retained
+portrait follower reached400. The original nonblocking lock raised
+`BlockingIOError: [Errno 11] Resource temporarily unavailable` before model loading;
+the stage and follower both returned1. Training continued normally. Preserve the
+failed command, exit, last30 lines, GPU/disk state and full original logs before
+relaunching this failed preview helper. Do not restart or modify training.
+
+The portrait preview now queues on the same lock, before importing Torch or using
+GPU memory. Its existing1800s wrapper timeout bounds the wait. Deploy this fix to
+a separate cold source and resume the follower against verified independent
+archives; already verified stages are read back and skipped. Preserve historical
+failed exit files under a unique attempt directory before publishing new ones.
+
+The latest requested qualitative comparison is0/200/250/300/350/400 on the same
+eight QIB cases and seeds0/1. After actual400 image/exit verification, run
+`CUDA_VISIBLE_DEVICES= python ops/h20-export-qib-six-stages.py` in the remote Torch
+environment. It verifies all96 source PNGs and matching prompt/sampling contracts,
+then exports four6144x4416 lossless pages. Each1024x1024 tile is pixel-identical to
+its source, with all six stages available. This is no full benchmark/judge score.

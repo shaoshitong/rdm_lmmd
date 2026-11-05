@@ -43,7 +43,11 @@ def main():
     folder.mkdir(exist_ok=True)
     assert not (folder/'preview-verified.json').exists(), 'Stage already complete'
     with (ROOT.parent/f'rdm-preview-gpu{a.gpu}.lock').open('a') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Other authorized fixed-case previews share GPU6. Queue behind their
+        # lock instead of reporting contention as a failed inference run.
+        # The outer wrapper's 1800s timeout also bounds this wait.
+        print(json.dumps(dict(step=a.step, phase='waiting_preview_GPU_lock', gpu=a.gpu)), flush=True)
+        fcntl.flock(lock, fcntl.LOCK_EX)
         checks = []
         for _ in range(2):
             used, total, util = map(int, subprocess.check_output(['nvidia-smi', '-i', str(a.gpu),
