@@ -105,3 +105,21 @@ may legitimately have no live wrapper. Its successful observation is still not t
 goal acceptance: full saved tensor/SHA and source readbacks remain required. At final500,
 inspect both complete training logs for all save markers; the one-shot observer's last12
 save lines do not cover the entire50..500 history.
+
+## Detached final CPU readbacks
+
+The owned SSH helper times out a single query after110s, while the measured24.62GB
+archived200 RAM read/SHA/deserialization took112.82s. Final audits therefore run through
+`ops/h20-run-checkpoint-audit.sh`, detached using the existing helper, with stdin closed
+and launch output redirected. No new relay or connection configuration is needed.
+Every invocation has its own `control/twohead-checkpoint-audits/<UTC>-<PID>-stepN/`
+with command, wrapper/child PIDs, raw stdout/stderr, launcher log and actual exit.
+The `latest.json` pointer is only a locator; acceptance reads the matching run directory.
+A separate CPU-audit lock serializes scans without taking the training lock. The audit
+has a3600s timeout; query timeout, audit timeout and formal training exit remain separate.
+
+Validate the runner on the actual400 rolling checkpoint with `400`. After clean500 exit0,
+run `500 --full`, then `500 --student --full --file <verified-archived-student500.pth>`.
+The underlying auditor still rejects premature full/student scans. Poll small log/status
+reads instead of holding an SSH query open. Archived full scans emit RAM-read progress
+before the final integrity JSON, so parse the final result after actual audit exit0.
