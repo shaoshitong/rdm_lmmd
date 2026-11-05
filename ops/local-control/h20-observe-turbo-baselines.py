@@ -37,14 +37,17 @@ for steps in [2,9]:
     logs = []
     for path in sorted((run/'logs').glob('*.log')):
         lines = path.read_text(errors='replace').splitlines()
-        batches = [line for line in lines if 'Batch inference' in line and re.search(r'100%|\b(\d+)/(\1)\b', line)]
+        batches = [line for line in lines if 'Batch inference' in line and re.search(r'\b\d+/\d+\b', line)]
+        counts = [tuple(map(int, re.search(r'\b(\d+)/(\d+)\b', line).groups())) for line in batches]
+        completed = max((done for done, total in counts), default=0)
         errors = [line for line in lines if any(x in line for x in
             ['Traceback (most recent call last)', 'OutOfMemoryError', 'CUDA out of memory', 'ChildFailedError'])]
         command = read(path.with_suffix('.command.json'))
         logs.append(dict(name=path.name, actual_exit=read(path.with_suffix('.exit.json')),
             pid=command['pid'] if command else None,
             live_command=alive(command['pid']) if command else None,
-            completed_batch_lines=batches[-3:], completed_batch_events=len(batches),
+            completed_batch_lines=batches[-3:], completed_batch_events=completed,
+            total_batches=counts[-1][1] if counts else None,
             errors=errors[-3:], tail=lines[-3:]))
     runs.append(dict(teacher_steps=steps, actual_expected_1024_images=len(images),
         generator_progress=[read(run/f'generate-rank{k}-progress.json') for k in [0,1]],
