@@ -92,6 +92,11 @@ schema JSON so it does not mmap that archived reference through ks3fs.
 are supported as well; `--once` validates one real observation without waiting for a save.
 The query is frozen and SHA-recorded at startup. A target-specific local lock prevents
 duplicate observers, and PID/command/status/true observer-exit files retain provenance.
+Each invocation also retains its own run directory. After acquiring that lock, a later
+invocation moves the previous target's command/PID/status/exit/history into that new
+run's `previous` directory before writing fresh status. Old observations and failures
+therefore remain readable and cannot be mistaken for a new observer's exit. Unexpected
+Python tracebacks are persisted as `exception.log` in the owning run directory.
 Transient SSH failures retry the same helper up to three times; query failure or timeout
 is explicitly distinct from training exit and never triggers a training restart.
 The observer retains compact history, all cumulative numerical/counter/trajectory checks,

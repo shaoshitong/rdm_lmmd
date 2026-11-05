@@ -14,6 +14,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+import traceback
 
 TRAIN_SHA = '1e06bf49569b4ee7847a417bc1ff1445bb8ba51b'
 FAIL_FIELDS = ['G_skips', 'D_skips', 'nonfinite_numeric_count', 'replay_nonzero_count',
@@ -53,10 +54,25 @@ def main():
     stem = args.output_dir/f'h20-twohead-observer-{args.target}'
     lock = stem.with_suffix('.lock').open('a')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    run_dir = args.output_dir/f'h20-twohead-observer-{args.target}-runs'/(
+        datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+f'-{os.getpid()}')
+    run_dir.mkdir(parents=True)
+    previous = run_dir/'previous'
+    preserved = []
+    prior_paths = [stem.with_suffix(suffix) for suffix in
+                   ('.command.json', '.pid', '.status.json', '.exit')]
+    prior_paths.append(args.output_dir/f'h20-twohead-observation-history-to{args.target}.json')
+    for prior in prior_paths:
+        if prior.exists():
+            previous.mkdir(exist_ok=True)
+            destination = previous/prior.name
+            prior.replace(destination)
+            preserved.append(str(destination))
     query_path = Path(__file__).with_name('h20-active-twohead-query.py')
     query = query_path.read_text()
     atomic(stem.with_suffix('.command.json'), dict(command=sys.argv, cwd=os.getcwd(),
         pid=os.getpid(), ssh_helper=str(args.ssh_helper), query=str(query_path.resolve()),
+        run_dir=str(run_dir), preserved_previous_files=preserved,
         query_sha256=hashlib.sha256(query.encode()).hexdigest(),
         observer_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         training_source_commit=TRAIN_SHA, read_only=True,
@@ -134,11 +150,18 @@ def main():
         else:
             reason, code = 'observation_window_ended_not_training_exit', 0
         return code
+    except BaseException:
+        (run_dir/'exception.log').write_text(traceback.format_exc())
+        raise
     finally:
         status = dict(reason=reason, observer_exit=code, observations=len(history),
                       actual_training_exit=data['exit'] if data else None,
                       last_step=data['last_step'] if data else None,
-                      channel_errors=channel_errors[-3:], goal_completion_proven=False)
+                      channel_errors=channel_errors[-3:], goal_completion_proven=False,
+                      run_dir=str(run_dir),
+                      exception_log=str(run_dir/'exception.log') if (run_dir/'exception.log').exists() else None)
+        atomic(run_dir/'status.json', status)
+        (run_dir/'exit').write_text(str(code)+'\n')
         atomic(stem.with_suffix('.status.json'), status)
         stem.with_suffix('.exit').write_text(str(code)+'\n')
         print(json.dumps(status), flush=True)
