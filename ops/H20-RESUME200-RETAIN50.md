@@ -84,3 +84,19 @@ with full final-object SHA verification, durable exact key/shape/dtype JSON and
 an original-path symlink. The reference is not current twohead150. No current
 training process, optimizer or checkpoint is changed. The auditor uses the verified
 schema JSON so it does not mmap that archived reference through ks3fs.
+
+## Reproducible local read-only observations
+
+`ops/local-control/h20-watch-twohead-progress.py --target 400 --ssh-helper <existing-helper>
+--output-dir <local-small-summary-directory>` polls the existing job only. Targets450/500
+are supported as well; `--once` validates one real observation without waiting for a save.
+The query is frozen and SHA-recorded at startup. A target-specific local lock prevents
+duplicate observers, and PID/command/status/true observer-exit files retain provenance.
+Transient SSH failures retry the same helper up to three times; query failure or timeout
+is explicitly distinct from training exit and never triggers a training restart.
+The observer retains compact history, all cumulative numerical/counter/trajectory checks,
+archive and native-preview evidence, and actual post-save iterations. A clean500 exit
+may legitimately have no live wrapper. Its successful observation is still not the final
+goal acceptance: full saved tensor/SHA and source readbacks remain required. At final500,
+inspect both complete training logs for all save markers; the one-shot observer's last12
+save lines do not cover the entire50..500 history.
