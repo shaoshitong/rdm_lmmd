@@ -33,9 +33,14 @@ text, contexts, row order and prompt identities through verified links.
 
 Generator base2.83e-5, D base1e-5, softplus, adaptive D policy, clip4, global32,
 micro2/accum8, FA3 and checkpoint groups2 remain the current settings. Student
-weights must retain every50..500 milestone. Before launch, preserve/migrate the
-inactive full old resume400 to verified shared object storage to recover space;
-never delete an unverified checkpoint. Require actual350 benchmark exit0, complete
+weights must retain every50..500 milestone with final-named SHA readback. The
+old resume400 stays local. During judging, `h20-stage-judge-cache-offload.py` copies
+the49.8GB first judge shard to shared object storage and verifies its final SHA.
+The active source path remains untouched until actual full350 benchmark exit0,
+all8 parts and4105 answers, and judge subprocess exit. Only then replace that
+verified local cache payload with its remote symlink, recovering enough space
+for the new rolling resume and a student snapshot plus margin. Never release an
+unverified checkpoint. Require actual350 benchmark exit0, complete
 new reference, sufficient remote checkpoint/cache space and a real two-GPU
 D/G-active smoke gate. Reinitialize from official pretrained0 after smoke; do not
 carry its updates or warm from350/400. Normal commits/main push and full Mac

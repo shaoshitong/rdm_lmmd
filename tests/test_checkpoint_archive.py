@@ -51,6 +51,34 @@ def test_resume_is_never_an_archive_deletion_candidate(tmp_path):
     assert source.exists()
 
 
+def test_final_named_corruption_preserves_source(tmp_path):
+    source = tmp_path/'step_0000050.pth'; source.write_bytes(b'new-milestone')
+    real_sha = archive_module.sha256
+    def readback(path):
+        return 'corrupt-final-name' if Path(path).name == source.name else real_sha(path)
+    with mock.patch.object(archive_module, 'sha256', side_effect=readback):
+        with pytest.raises(AssertionError, match='Final-named'):
+            archive_checkpoint(source, tmp_path/'archive', tmp_path/'proof.json', validator, verify_final=True)
+    assert source.read_bytes() == b'new-milestone'
+    assert not (tmp_path/'proof.json').exists()
+
+
+@pytest.mark.parametrize('first,expected', [(50,list(range(50,501,50))), (200,list(range(200,501,50)))])
+def test_watch_milestones_include_first50_and_keep_old_default(tmp_path, first, expected):
+    source=tmp_path/'source'; source.mkdir(); control=tmp_path/'control'; control.mkdir()
+    for step in expected:(source/f'step_{step:07d}.pth').write_bytes(b'test')
+    real_archive=archive_module.archive_checkpoint
+    def execute(src, dst, proof, **kwargs):
+        return real_archive(src,dst,proof,validator,**kwargs)
+    with mock.patch.object(archive_module,'archive_checkpoint',side_effect=execute):
+        kwargs={} if first==200 else dict(first_step=first,verify_final=True)
+        archive_module.watch(source,tmp_path/'archive',control,**kwargs)
+    complete=json.loads((control/'checkpoint-archive-complete.json').read_text())
+    assert [r['step'] for r in complete['weights']]==expected
+    assert all(r['final_named_sha_readback']==(first==50) for r in complete['weights'])
+    assert json.loads((control/'checkpoint-archive-progress.json').read_text())['pending_steps']==[]
+
+
 def test_low_space_with_dead_archiver_stops_before_write(tmp_path):
     exitfile = tmp_path/'archive.exit'; exitfile.write_text('1\n')
     with mock.patch.object(archive_module.shutil, 'disk_usage', return_value=mock.Mock(free=10)):

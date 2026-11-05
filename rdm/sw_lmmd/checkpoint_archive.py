@@ -41,7 +41,7 @@ def inspect_student(path, step):
     return dict(step=step, model_tensors=len(model), model_numel=6154908736, model_dtype='float32')
 
 
-def archive_checkpoint(source, archive_dir, receipt_path, validator=inspect_student):
+def archive_checkpoint(source, archive_dir, receipt_path, validator=inspect_student, *, verify_final=False):
     source = Path(source); archive_dir = Path(archive_dir); receipt_path = Path(receipt_path)
     assert source.name.startswith('step_') and source.suffix == '.pth', 'Never archive/delete resume state'
     step = int(source.stem.split('_')[1]); metadata = validator(source, step)
@@ -62,10 +62,13 @@ def archive_checkpoint(source, archive_dir, receipt_path, validator=inspect_stud
         assert temporary.stat().st_size == before.st_size and sha256(temporary) == expected, 'Archive readback failed; local source preserved'
         os.replace(temporary, destination)
         assert destination.stat().st_size == before.st_size, 'Published archive size differs'
+    if verify_final:
+        assert destination.stat().st_size == before.st_size and sha256(destination) == expected, 'Final-named archive readback failed; source preserved'
     after = source.stat()
     assert stamp == (after.st_ino, after.st_size, after.st_mtime_ns), 'Local source changed during archive; preserved'
     receipt = dict(metadata, passed=True, source=str(source), destination=str(destination),
-        bytes=before.st_size, sha256=expected, verified_epoch=time.time(), local_source_removed=False)
+        bytes=before.st_size, sha256=expected, verified_epoch=time.time(), local_source_removed=False,
+        final_named_sha_readback=bool(verify_final))
     atomic_json(receipt_path, receipt)
     atomic_json(destination.with_suffix('.verified.json'), receipt)
     # Both SHA readback and receipts must precede removing our completed staging file.
@@ -87,11 +90,12 @@ def wait_for_space(directory, required_bytes, worker_exit, timeout=1200):
         time.sleep(2)
 
 
-def watch(source_dir, archive_dir, control_dir):
+def watch(source_dir, archive_dir, control_dir, *, first_step=200, last_step=500, interval=50, verify_final=False):
     source_dir, archive_dir, control_dir = map(Path, [source_dir, archive_dir, control_dir])
+    assert 0 < first_step <= last_step and interval > 0 and (last_step-first_step) % interval == 0
     results = []
     deadline = time.monotonic()+36*3600
-    for step in range(200, 501, 50):
+    for step in range(first_step, last_step+1, interval):
         receipt_path = control_dir/f'checkpoint-archive-{step}.json'
         source = source_dir/f'step_{step:07d}.pth'
         while not source.exists():
@@ -105,10 +109,10 @@ def watch(source_dir, archive_dir, control_dir):
             time.sleep(2)
         else:
             print(json.dumps(dict(event='archive_started', step=step, bytes=source.stat().st_size)), flush=True)
-            results.append(archive_checkpoint(source, archive_dir, receipt_path))
+            results.append(archive_checkpoint(source, archive_dir, receipt_path, verify_final=verify_final))
             print(json.dumps(dict(event='archive_verified', **results[-1])), flush=True)
         atomic_json(control_dir/'checkpoint-archive-progress.json', dict(
-            verified_steps=[r['step'] for r in results], pending_steps=list(range(step+50, 501, 50)),
+            verified_steps=[r['step'] for r in results], pending_steps=list(range(step+interval, last_step+1, interval)),
             last_receipt=results[-1], updated_epoch=time.time()))
     atomic_json(control_dir/'checkpoint-archive-complete.json', dict(passed=True, weights=results))
 
@@ -118,12 +122,17 @@ def main():
     p.add_argument('--source-dir', required=True)
     p.add_argument('--archive-dir', required=True)
     p.add_argument('--control-dir', required=True)
+    p.add_argument('--first-step', type=int, default=200)
+    p.add_argument('--last-step', type=int, default=500)
+    p.add_argument('--interval', type=int, default=50)
+    p.add_argument('--verify-final-named', action='store_true')
     args = p.parse_args()
     assert args.archive_dir.startswith('/mnt/airs-business/shaoshitong/rdm-sets/checkpoints/')
     control = Path(args.control_dir); control.mkdir(parents=True, exist_ok=True)
     code = 0
     try:
-        watch(args.source_dir, args.archive_dir, control)
+        watch(args.source_dir, args.archive_dir, control, first_step=args.first_step,
+              last_step=args.last_step, interval=args.interval, verify_final=args.verify_final_named)
     except BaseException:
         import traceback
         traceback.print_exc(); code = 1
