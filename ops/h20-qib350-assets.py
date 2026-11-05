@@ -56,7 +56,8 @@ def main():
         for entry in files:
             name = PurePosixPath(entry.rfilename)
             assert not name.is_absolute() and '..' not in name.parts
-            assert isinstance(entry.size, int) and entry.size > 0
+            # Official Python package markers may be valid zero-byte Git blobs.
+            assert isinstance(entry.size, int) and entry.size >= 0
         inventories.append((kind, revision, files, folder))
     hf.set_client_factory(lambda: httpx.Client(trust_env=False, follow_redirects=True, timeout=120))
     aria = shutil.which('aria2c')
