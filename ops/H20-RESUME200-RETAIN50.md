@@ -145,3 +145,17 @@ eight QIB cases and seeds0/1. After actual400 image/exit verification, run
 environment. It verifies all96 source PNGs and matching prompt/sampling contracts,
 then exports four6144x4416 lossless pages. Each1024x1024 tile is pixel-identical to
 its source, with all six stages available. This is no full benchmark/judge score.
+
+## Exact adaptive-controller acceptance
+
+`ops/h20-replay-twohead-controller.py` replays every recorded raw global D loss,
+actual active G loss and pre-D proxy through the actual immutable controller.
+It compares full decisions/statistics plus the used and next D learning rates at
+every iteration. It checks controller source identity across the200 resume and
+round-trips the actual200 history boundary. This is a CPU-only log audit, without
+new training hooks, gradients, model loads or runtime metric collection.
+
+A real410-row replay passed with all410 decisions equal. Its explicit `--final`
+guard correctly refused acceptance before actual500 and training exit0. At final
+acceptance, run this published helper with `--final` and retain the real command,
+stdout/stderr and exit; it supplements full checkpoint/source integrity checks.
