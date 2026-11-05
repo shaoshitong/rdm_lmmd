@@ -87,3 +87,16 @@ MMD, plus G training surrogate and the existing global grad_norm. Warmup proxy
 values never appear as active G losses. Moving means are trailing10 iterations;
 vertical D LR markers come only from actual controller actions. Output is a
 standalone PNG/PDF; no extra training metrics/hooks or fake new-run plots.
+
+The first real two-GPU successor smoke (trainingv3/e863fe5) exited1 before any
+optimizer update: SpatialGANRuntime still required the old three-MMD panel.
+The corrected runtime accepts exactly either the legacy3 panel or the new
+DINO/Qwen2 panel, with no change to spatial heads, softplus, head averaging or
+learning rates. Legacy initialization/RNG behavior remains covered. A new CPU
+integration case constructs the real critic from a DINO/Qwen-only store and
+executes finite D and G updates with no SigLIP/AIM feature access. This integration
+test is now part of the launch CPU gate, followed by the same real3-iteration
+FSDP smoke. Failed command/exit/logs are preserved before a fresh attempt; formal
+training never started in the failed attempt. The finalizer reuses the already
+full-SHA-verified350 archive, and scalar snapshots bind the actual immutable fresh0
+formal command/preflight source instead of the superseded failed smoke source.

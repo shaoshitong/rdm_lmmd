@@ -65,7 +65,14 @@ def main():
     os.environ.update(CUDA_VISIBLE_DEVICES='',TMPDIR=str(ROOT/'.cache/tmp'),OMP_NUM_THREADS='2',PYTHONUNBUFFERED='1')
     run('CPU-gates',[sys.executable,'-m','pytest','-q','tests/test_mmd2_handoff.py','tests/test_checkpoint_archive.py'])
     wait_exit('qib350-two-gpu')
-    run('preserve-benchmark',[sys.executable,CODE/'ops/h20-preserve-qib350.py'])
+    prior=CONTROL/'qib350-full-preservation-verified.json'
+    if prior.exists():
+        saved=json.loads(prior.read_text())
+        assert saved['passed'] and saved['images']==1000 and saved['actual_raw_dimension_answers']==4105
+        assert saved['source_commit']=='31bbce8253dfee657a6399e5e23d8946e9d65bd1'
+        assert Path(saved['archive']).stat().st_size==saved['archive_bytes']
+        write('preserve-benchmark-reused',dict(passed=True,receipt=str(prior),archive_sha256=saved['archive_sha256']))
+    else:run('preserve-benchmark',[sys.executable,CODE/'ops/h20-preserve-qib350.py'])
     wait_exit('dino-qwenvl-mmd2-from0')
     run('final-resume-student-audit',[sys.executable,CODE/'ops/h20-audit-mmd2-final.py',
         '--training-source',a.training_source,'--training-sha',a.training_sha])

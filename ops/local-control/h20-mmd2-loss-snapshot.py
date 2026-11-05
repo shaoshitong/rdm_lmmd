@@ -9,8 +9,6 @@ import sys
 
 ROOT=Path('/data/shaoshitong/rdm-sets')
 CONTROL=ROOT/'control'
-SOURCE=Path('/data/shaoshitong/RDM-dino-qwenvl-mmd2-v3')
-SHA='e863fe57f56952b2e8cded09425dfdc5f5b584b0'
 EXP=ROOT/'zimage/work_dirs/zimage-2step-1024-dino-qwenvl-mmd2-from0'
 PREFIX='dino-qwenvl-mmd2-from0'
 # This reader itself is supplied on stdin from a later, published code-only tree.
@@ -23,6 +21,9 @@ if not command_path.exists():
     print(json.dumps(dict(status='not_started',rows=[],experiment=EXP.name,utc=datetime.datetime.now(datetime.timezone.utc).isoformat())))
     raise SystemExit(0)
 command=json.loads(command_path.read_text());preflight=json.loads((CONTROL/(PREFIX+'-preflight.json')).read_text())
+SOURCE=Path(command['source']).resolve()
+assert SOURCE.is_relative_to('/data/shaoshitong') and SOURCE.name.startswith('RDM-dino-qwenvl-mmd2-v')
+SHA=command['source_commit']
 assert command['source']==str(SOURCE) and command['source_commit']==SHA and command['CUDA_VISIBLE_DEVICES']=='4,5'
 assert (SOURCE/'SOURCE_COMMIT').read_text().strip()==SHA
 assert preflight['passed'] and preflight['source_commit']==SHA and preflight['init']=='official pretrained0'
