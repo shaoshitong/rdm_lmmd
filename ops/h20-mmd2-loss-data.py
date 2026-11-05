@@ -17,7 +17,7 @@ def validate_rows(rows):
     assert rows and [r['step'] for r in rows]==list(range(1,len(rows)+1)), 'Require contiguous actual completed iterations from0'
     for row in rows:
         finite(row)
-        assert row['skipped'] is False and row['grad_norm']>0
+        assert row['skipped'] is False and row['grad_norm']>=0
         for step in [1,2]:
             assert row[f's{step}/gan/d_skipped'] is False
             assert bool(row[f's{step}/gan/g_active'])==(row['step']>50)

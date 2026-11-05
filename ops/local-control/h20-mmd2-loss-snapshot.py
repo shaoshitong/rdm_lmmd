@@ -15,7 +15,7 @@ EXP=ROOT/'zimage/work_dirs/zimage-2step-1024-dino-qwenvl-mmd2-from0'
 PREFIX='dino-qwenvl-mmd2-from0'
 # This reader itself is supplied on stdin from a later, published code-only tree.
 # Import its small contract module from the cold visualization deployment, never hot-edit SOURCE.
-CONTRACT=Path('/data/shaoshitong/RDM-dino-qwenvl-mmd2-v5/ops/h20-mmd2-loss-data.py')
+CONTRACT=Path('/data/shaoshitong/RDM-dino-qwenvl-mmd2-v6/ops/h20-mmd2-loss-data.py')
 spec=importlib.util.spec_from_file_location('mmd2_loss_contract',CONTRACT)
 contract=importlib.util.module_from_spec(spec);spec.loader.exec_module(contract)
 command_path=CONTROL/(PREFIX+'-formal.command.json')

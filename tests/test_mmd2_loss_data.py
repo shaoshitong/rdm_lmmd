@@ -45,3 +45,8 @@ def test_skips_nonfinite_gaps_or_extra_GAN_head_are_rejected():
 
 def test_trailing_mean_is_causal_and_not_future_centered():
     assert m.trailing_mean([1.,3.,8.],2)==[1.,2.,5.5]
+
+
+def test_zero_norm_and_zero_softplus_stay_visible_for_diagnosis():
+    r=row(1);r['grad_norm']=0.;r['s1/gan/dinov3_l/d_loss']=0.
+    assert m.validate_rows([r])==[r]
