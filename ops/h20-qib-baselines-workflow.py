@@ -18,6 +18,7 @@ ROOT = Path('/data/shaoshitong/rdm-sets')
 CONTROL = ROOT/'control'
 PREFIX = 'qib-turbo2-turbo9-gpu67'
 REVISION = 'f332072aa78be7aecdf3ee76d5c247082da564a6'
+JUDGE_MODEL = Path('/dev/shm/shaoshitong-qib-judge-1b77ff83564ac4e4e8140769eacff7ff73f35f3c')
 
 
 def module(name, path):
@@ -144,7 +145,7 @@ def run_one(steps):
             while not destination.exists():
                 name = f'judge_part{part}_gpu{gpu}_b{batch}_attempt{attempt}'
                 process = runtime.spawn(name, [runtime.JUDGE, CODE/'ops/h20-qib-baseline-judge-part.py',
-                    '--input', run/'shards'/f'part_{part}.jsonl', '--batch', batch], gpu)
+                    '--input', run/'shards'/f'part_{part}.jsonl', '--batch', batch, '--model', JUDGE_MODEL], gpu)
                 code = runtime.wait(name, process)
                 if code == 0:
                     assert destination.exists(), 'Judge exit0 without output'
@@ -182,6 +183,12 @@ def run_one(steps):
 def main():
     signal.signal(signal.SIGTERM, runtime.stop)
     signal.signal(signal.SIGINT, runtime.stop)
+    runtime.write(CONTROL/(PREFIX+'-command.json'), dict(pid=os.getpid(), source=str(CODE),
+        source_commit=(CODE/'SOURCE_COMMIT').read_text().strip(), physical_GPUs=[6,7],
+        steps=[2,9], official_model_revision=REVISION, started_epoch=time.time(), no_training_mutation=True))
+    status('staging_verified_judge_in_remote_RAM')
+    stager = module('judge_ram_stage', CODE/'ops/h20-stage-qib-judge-ram.py')
+    assert stager.stage() == JUDGE_MODEL
     for gpu in (6,7):
         used = int(subprocess.check_output(['nvidia-smi','-i',str(gpu),'--query-gpu=memory.used',
             '--format=csv,noheader,nounits'], text=True).strip())

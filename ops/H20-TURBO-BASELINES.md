@@ -35,3 +35,20 @@ All subprocess commands/PIDs, source commit, real exits, failures/tracebacks and
 stdout/stderr are durable under each run/logs and ROOT/control. Wrapper final
 exit: ROOT/control/qib-turbo2-turbo9-gpu67.exit. Completed files/failed logs are
 preserved; wrapper refuses a duplicate launch. No GPU occupation placeholders.
+
+Recovery2026-11-05: first attempt produced all1000 Turbo2 images, both generator
+exits0, but both judges died with actual SIGBUS(-7) while safetensors loaded the
+same offloaded49.825GB object-mount shard. No completed judge batch/part;9-step
+had not started. Preserve all old control records and logs before a fresh
+workflow attempt; generation resumes existing verified PNGs without recompute.
+
+The recovery stages that single shard by sequential reads into remote `/dev/shm`
+(measured1.03TB free,1.9TB system RAM available), checks its pinned official SHA
+during copy and rereads the final named RAM file for SHA again. The judge gets
+an explicit model directory with this ordinary tmpfs file; other files link to
+the unchanged original model. No mmap directly on the offloaded object file,
+no node-local disk duplicate that would compete with training checkpoints,
+no Mac weights and no changes to shared model paths or running training.
+This addresses the failing storage access path; it does not claim an unobserved
+kernel-level cause. After recovery require actual completed inference batches,
+not merely a successful weight load, before reporting effective progress.
