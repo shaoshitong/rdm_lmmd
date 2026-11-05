@@ -52,3 +52,35 @@ def test_capacity_covers_new_resume_plus_student(tmp_path):
 def test_missing_4105_answers_cannot_start_training(tmp_path):
     fixtures(tmp_path);p=tmp_path/'qib350-two-gpu-complete.json';value=json.loads(p.read_text());value['actual_raw_dimension_answers']=4104;p.write_text(json.dumps(value))
     with mock.patch.object(workflow,'CONTROL',tmp_path),pytest.raises(AssertionError):workflow.ready()
+
+
+def test_final_audit_cannot_use_live_or_failed_training(tmp_path):
+    spec=importlib.util.spec_from_file_location('mmd2_final',Path(__file__).resolve().parents[1]/'ops/h20-audit-mmd2-final.py')
+    audit=importlib.util.module_from_spec(spec);spec.loader.exec_module(audit)
+    (tmp_path/(audit.PREFIX+'.exit')).write_text('1\n')
+    with mock.patch.object(audit,'CONTROL',tmp_path),pytest.raises(AssertionError,match='actual successful'):
+        audit.audit(tmp_path,'not-a-real-source')
+
+
+def test_benchmark_preservation_cannot_use_prewrite_completion(tmp_path):
+    spec=importlib.util.spec_from_file_location('qib_preserve',Path(__file__).resolve().parents[1]/'ops/h20-preserve-qib350.py')
+    preserve=importlib.util.module_from_spec(spec);spec.loader.exec_module(preserve)
+    (tmp_path/'qib350-two-gpu.exit').write_text('1\n')
+    with mock.patch.object(preserve,'CONTROL',tmp_path),pytest.raises(AssertionError):preserve.preserve()
+
+
+def test_full_run_compression_hash_covers_actual_tar_bytes(tmp_path):
+    import hashlib
+    import io
+    import tarfile
+    spec=importlib.util.spec_from_file_location('qib_tar_stream',Path(__file__).resolve().parents[1]/'ops/h20-preserve-qib350.py')
+    preserve=importlib.util.module_from_spec(spec);spec.loader.exec_module(preserve)
+    out=io.BytesIO()
+    with mock.patch.object(preserve,'CONTROL',tmp_path):
+        hashed=preserve.HashWriter(out)
+        with preserve.archive_stream(hashed) as tar:
+            data=b'code-only audit fixture';info=tarfile.TarInfo('fixture.txt');info.size=len(data);tar.addfile(info,io.BytesIO(data))
+    payload=out.getvalue()
+    assert hashed.bytes==len(payload) and hashed.h.hexdigest()==hashlib.sha256(payload).hexdigest()
+    with tarfile.open(fileobj=io.BytesIO(payload),mode='r:gz') as tar:
+        assert tar.extractfile('fixture.txt').read()==data

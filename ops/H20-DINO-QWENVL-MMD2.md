@@ -59,3 +59,18 @@ The archiver starts at50 and preserves every50..500 student with full final-name
 SHA verification. Failure exits retain command, stage exit and logs; the controller
 does not retry/restart formal training. Final full-resume audit and reporting are
 separate from proving training/weight retention complete.
+
+Final acceptance is CPU-only after actual training exit0, never added runtime
+telemetry. `h20-audit-mmd2-final.py` binds the exact source/formal command, replays
+all500 actual adaptive-D decisions, checks both D Adam states, global MMD2 and
+spatial cache row/age/shape alignment, and scans the saved tensors for finite
+values. It SHA-loads archived student500 to remote RAM and compares all521 FP32
+tensors exactly with the rolling resume500. The original FSDP G-Adam serialization
+limitation is retained and recorded honestly.
+`h20-preserve-qib350.py` requires actual full benchmark exit0, all8 successful
+thinking checks, merged1000 unique IDs,4105 raw answers and official scoring/report
+before streaming the complete run to shared storage and checking final-named SHA.
+The source run remains on the node. `h20-finalize-qib350-mmd2.py` waits for these
+existing processes and runs preservation/final integrity in sequence; it cannot
+launch or restart training/evaluation. Final curves and a read-back of actual
+scores/integrity are still required before declaring the overall goal complete.
