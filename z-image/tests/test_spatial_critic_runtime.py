@@ -243,6 +243,29 @@ class SpatialRuntimeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'contract'):
             self.runtime(2).load_state_dict(runtime.state_dict())
 
+    def test_new_two_MMD_store_runs_D_and_G_without_removed_features(self):
+        class TwoStore(FakeStore):
+            dims = {'dinov3_l': 5, 'qwen3vl_4b': 9}
+        self.store = TwoStore(); self.cfg.loss = 'ns'
+        names = ['dinov3_l', 'qwen3vl_4b']
+        runtime = SpatialGANRuntime(self.cfg, self.store, names, 'cpu', torch.float64,
+            critic_micro_batch=2, step_seed=19, global_remaining=(),
+            spatial_branch_specs=self.specs, spatial_options={'heads': 2})
+        self.assertEqual(runtime.names, names); self.assertEqual(runtime.encoder_weight, .5)
+        self.assertEqual(runtime.contract['base_encoders'], names)
+        self.assertEqual(list(runtime.critic['global'].parameters()), [])
+        fake, real, _, _, tau = self.inputs(requires_grad=True)
+        d = runtime.update(fake, real, {}, {}, tau)
+        self.assertEqual(runtime.updates, 1); self.assertFalse(d['gan/d_skipped'])
+        self.assertAlmostEqual(d['gan/d_loss'], sum(d[f'gan/{n}/d_loss'] for n in names)/2, places=12)
+        loss, logs = runtime.generator_loss(fake, {}, tau)
+        self.assertAlmostEqual(loss.item(), sum(logs[f'gan/{n}/g_loss'] for n in names)/2, places=12)
+        loss.backward()
+        self.assertTrue(all(torch.isfinite(v.grad).all() and v.grad.abs().sum()>0 for v in fake.values()))
+        self.assertIsNone(tau.grad)
+        with self.assertRaisesRegex(ValueError, 'global GAN head'):
+            SpatialGANRuntime(self.cfg, self.store, names, global_remaining=('aimv2_huge',))
+
     def test_ns_all_three_heads_match_softplus_objective_gradients_and_raw_logit_logs(self):
         self.cfg.loss = 'ns'; self.cfg.lr = 1e-5
         whole, chunks = self.runtime(5), self.runtime(2)

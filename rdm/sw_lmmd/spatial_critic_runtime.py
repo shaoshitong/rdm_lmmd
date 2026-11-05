@@ -24,9 +24,10 @@ from .spatial_adversarial import (
 class SpatialGANRuntime:
     """Replicated mixed critic+AdamW, with one instance per generator step.
 
-    ``store`` remains the original three-global-encoder Qwen-text store. Building
-    all three old heads before pruning preserves AIM initialization and reference
-    statistics exactly. ``fake_global``/``real_global`` may be joint vectors;
+    ``store`` supplies the configured MMD panel, either the original three-global
+    encoders or the DINO/Qwen successor. Building its legacy global heads before
+    pruning preserves old-panel initialization/statistics and never asks a new
+    two-stream store for removed SigLIP/AIM features. ``fake_global``/``real_global`` may be joint vectors;
     only their image prefix is read and caption tau is supplied separately.
 
     Spatial inputs are unaggregated maps; learned aggregators are never cached.
@@ -46,20 +47,22 @@ class SpatialGANRuntime:
         self.cfg, self.device, self.dtype = cfg, torch.device(device), dtype
         self.critic_micro_batch = critic_micro_batch
         self.base_encoder_names = list(base_encoder_names)
-        expected_base = {'dinov3_l', 'siglip2', 'aimv2_huge'}
-        if len(self.base_encoder_names) != 3 or set(self.base_encoder_names) != expected_base:
-            raise ValueError('Mixed spatial GAN requires the original DINO/SigLIP/AIM three-head panel')
+        panels = ({'dinov3_l', 'siglip2', 'aimv2_huge'}, {'dinov3_l', 'qwen3vl_4b'})
+        if set(self.base_encoder_names) not in panels or len(self.base_encoder_names) != len(set(self.base_encoder_names)):
+            raise ValueError('Spatial GAN requires the original MMD panel or the DINO/Qwen MMD panel')
         if cfg.encoders is not None and list(cfg.encoders) != self.base_encoder_names:
-            raise ValueError('Mixed spatial GAN preserves all three original encoder weights; do not subset gan.encoders')
+            raise ValueError('Spatial GAN requires gan.encoders to preserve the configured MMD panel')
         self.global_names = list(global_remaining)
         if self.global_names not in ([], ['aimv2_huge']):
             raise ValueError('Global GAN heads must be empty or the explicit legacy AIM head')
+        if not set(self.global_names).issubset(self.base_encoder_names):
+            raise ValueError('A global GAN head must exist in the configured MMD store')
         self.spatial_specs = dict(DEFAULT_SPATIAL_BRANCHES if spatial_branch_specs is None else spatial_branch_specs)
         if set(self.spatial_specs) != {'dinov3_l', 'qwen3vl_4b'}:
             raise ValueError('Spatial GAN requires the DINO and Qwen spatial branches')
         self.spatial_names = list(self.spatial_specs)
         self.names = self.spatial_names + self.global_names
-        # GAN head normalization is independent of the three original MMD streams.
+        # GAN head normalization is independent of the configured MMD streams.
         self.encoder_weight = 1.0 / len(self.names)
         self.seed = int(cfg.seed if step_seed is None else step_seed)
         self.text_dim = int(store.text.shape[1])

@@ -163,6 +163,7 @@ def main():
     (CONTROL/(PREFIX+'.pid')).write_text(str(os.getpid())+'\n')
     status('CPU_checks_before_handoff')
     tests=['tests/test_qwen3_vl_backbone.py','tests/test_checkpoint_archive.py','tests/test_mmd2_handoff.py',
+        'z-image/tests/test_spatial_critic_runtime.py',
         'z-image/tests/test_qwen3vl_reference_builder.py','z-image/tests/test_qwen_text_store.py']
     cpu=spawn('cpu',[PYTHON,'-m','pytest','-q',*tests]);require_success(cpu)
     last=None
