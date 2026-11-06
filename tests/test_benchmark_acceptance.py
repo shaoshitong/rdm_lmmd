@@ -259,3 +259,18 @@ def test_only_actual_cuda_oom_exception_without_timeout_can_trigger_fallback(lin
                                  'command --match torch.cuda.OutOfMemoryError: x'])
 def test_unrelated_error_or_oom_wording_is_not_classified_as_oom(text):
     assert not _helper.is_expected_cuda_oom(text)
+
+
+def test_fixed_weight_acceptance_requires_real_dg_without_norm_balancing():
+    data = record()
+    for iteration in data['steps']:
+        for row in iteration:
+            logs = row['logs']
+            logs['pixel_gc/balance_mode'] = 'fixed'
+            for k in [1, 2]:
+                logs.pop(f's{k}/pixel_adv_grad_norm', None)
+                logs[f's{k}/pixel_adv_lambda'] = 5e-5
+    _helper.validate_benchmark_record(data, expected_spatial=True)
+    data['steps'][0][0]['logs']['s1/gan/d_skipped'] = True
+    with pytest.raises(ValueError):
+        _helper.validate_benchmark_record(data, expected_spatial=True)

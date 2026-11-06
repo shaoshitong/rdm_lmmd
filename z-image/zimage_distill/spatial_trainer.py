@@ -15,6 +15,8 @@ from rdm.sw_lmmd.sharding import (
     all_gather_detached, all_reduce_mean_, partition_rows, reduce_scalar, row_noise,
 )
 from rdm.sw_lmmd.spatial_cache import SpatialWindowCache
+from rdm.sw_lmmd.config import LRSchedule
+from dataclasses import asdict
 from rdm.sw_lmmd.adaptive_d_lr import AdaptiveDLRConfig, AdaptiveDLRController
 from rdm.train.pixel_grad_caching import pixel_gradcache_backward
 from rdm.utils.distributed import get_rank, is_dist
@@ -30,7 +32,7 @@ def patch_stream(step, encoder):
 
 class SpatialMultiStepTrainer(MultiStepTrainer):
     def __init__(self, *args, spatial_battery, reference_images, adaptive_d_lr=None,
-                 adaptive_d_lr_allow_legacy_resume=False, **kwargs):
+                 adaptive_d_lr_allow_legacy_resume=False, discriminator_lr_schedule=None, **kwargs):
         super().__init__(*args, **kwargs)
         if not self.joint or not self.feature_quantize:
             raise ValueError('Spatial GAN requires Qwen text joint MMD and shared PNG quantization')
@@ -52,6 +54,12 @@ class SpatialMultiStepTrainer(MultiStepTrainer):
                                  'index_sha256': reference_images.manifest['index']['sha256'],
                                  'cache_dtype': 'bfloat16', 'balance_space': 'decoded-image-pixels'}
         self.d_lr_config = AdaptiveDLRConfig.from_mapping(adaptive_d_lr or {})
+        self.discriminator_lr_schedule = (LRSchedule(**discriminator_lr_schedule)
+                                          if discriminator_lr_schedule else None)
+        if self.discriminator_lr_schedule is not None:
+            self.discriminator_lr_schedule.validate()
+            if self.d_lr_config.enabled:
+                raise ValueError('Choose scheduled D LR or adaptive D LR, not both')
         self.d_lr_controller = None
         if self.d_lr_config.enabled:
             if any(runtime.cfg.loss != 'ns' for runtime in self.step_critics):
@@ -179,6 +187,11 @@ class SpatialMultiStepTrainer(MultiStepTrainer):
         if not self.cache.initialized or not self.spatial_cache.initialized:
             raise RuntimeError('Bootstrap both global and spatial windows before training')
         lr = self._apply_lr_schedule()
+        if self.discriminator_lr_schedule is not None:
+            factor = self.discriminator_lr_schedule.factor(self.step_idx)
+            for runtime in self.step_critics:
+                for group in runtime.optimizer.param_groups:
+                    group['lr'] = runtime.cfg.lr * factor
         window = self._pending_window or self.schedule.next()
         self._pending_window = None
         local_active = partition_rows(window.active_ids)
@@ -261,8 +274,11 @@ class SpatialMultiStepTrainer(MultiStepTrainer):
                          'gan/grad_ratio_raw': adv_norm/max(mmd_norm, 1e-30)}
 
         self.optimizer.zero_grad(set_to_none=True)
+        fixed = (None if any(runtime.cfg.adaptive for runtime in self.step_critics) else
+                 {k: self.step_critics[k-1].cfg.weight for k in steps})
         value, logs = pixel_gradcache_backward(chunks, self._generate_images, self._encode_images,
-                                               loss_terms, balance)
+                                               loss_terms, balance, fixed_weights=fixed,
+                                               diagnose_replay=fixed is None)
         force_value = logs.pop('_force', value)
         if self.grad_reduce == 'mean':
             for parameter in self._gen_params:
@@ -290,6 +306,9 @@ class SpatialMultiStepTrainer(MultiStepTrainer):
         for key in _PRINTED_GAN_KEYS:
             if f's{self.num_steps}/{key}' in logs:
                 result[key] = logs[f's{self.num_steps}/{key}']
+        if self.grad_clip > 0 and grad_norm is not None:
+            result['g_clip_coefficient'] = (min(1.0, self.grad_clip / (float(grad_norm) + 1e-6))
+                                            if finite else 0.0)
         self._adapt_discriminator_lr(result)
         self._last_logs = result
         return result
@@ -297,6 +316,8 @@ class SpatialMultiStepTrainer(MultiStepTrainer):
     def state_dict(self, with_cache=True, with_optimizer=True, with_critic=True):
         state = super().state_dict(with_cache, with_optimizer, with_critic)
         state['spatial_gan_contract'] = self.spatial_contract
+        if self.discriminator_lr_schedule is not None:
+            state['discriminator_lr_schedule'] = asdict(self.discriminator_lr_schedule)
         if with_cache:
             state['spatial_cache'] = self.spatial_cache.state_dict()
         if self.d_lr_controller is not None:
@@ -304,6 +325,9 @@ class SpatialMultiStepTrainer(MultiStepTrainer):
         return state
 
     def load_state_dict(self, state):
+        expected = asdict(self.discriminator_lr_schedule) if self.discriminator_lr_schedule else None
+        if state.get('discriminator_lr_schedule') != expected:
+            raise RuntimeError('Discriminator LR schedule differs from checkpoint')
         if state.get('spatial_gan_contract') != self.spatial_contract:
             raise RuntimeError('Spatial GAN checkpoint representation/reference contract mismatch')
         if state.get('cache') is not None and state.get('spatial_cache') is None:

@@ -29,10 +29,12 @@ ap.add_argument('--config', default='z-image/configs/zimage_2step_1024_dlr1e-4_q
 ap.add_argument('--reference-root', default='/data/rdm-workspace/rdm-sets/zimage/zimage-ref-v1/reference_store_qwen')
 a = ap.parse_args()
 rank, world, local_rank = setup_distributed()
-assert world == 2 and 32 % (world * a.micro_batch) == 0
+assert world == 2
 setup_logging(rank=rank)
 fix_random_seeds(0)
 cfg = load_config(a.config)
+active_batch = int(cfg.active_global_batch)
+assert active_batch % (world * a.micro_batch) == 0
 spatial_enabled = bool(getattr(cfg, 'spatial_gan', {}).get('enabled', False))
 configured_g_start = cfg.gan.get('g_start_step', 50)
 if spatial_enabled and a.iterations < 3:
@@ -77,7 +79,7 @@ for i in range(a.iterations):
     dist.all_gather_object(gathered, row)
     if rank == 0:
         rows.append(gathered)
-        print(json.dumps({'micro_batch': a.micro_batch, 'grad_accum': 32 // (world * a.micro_batch),
+        print(json.dumps({'micro_batch': a.micro_batch, 'grad_accum': active_batch // (world * a.micro_batch),
                           'backend': a.backend, 'checkpoint_group_size': a.checkpoint_group_size,
                           'ranks': gathered}), flush=True)
 extra = None
@@ -113,7 +115,7 @@ if rank == 0:
     out = a.out_dir / f'benchmark-{a.backend}-micro{a.micro_batch}{suffix}.json'
     record = {'micro_batch': a.micro_batch, 'backend': a.backend,
               'checkpoint_group_size': a.checkpoint_group_size,
-              'global_batch': 32, 'generator_gan_active': True, 'steps': rows,
+              'global_batch': active_batch, 'generator_gan_active': True, 'steps': rows,
               'probe_refresh': extra, 'probe_refresh_contract': probe_contract, 'spatial_patchgan': spatial_enabled,
               'generation_steps': trainer.num_steps, 'world_size': world,
               'gan_heads': gan_heads,

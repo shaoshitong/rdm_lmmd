@@ -13,12 +13,15 @@ from h20_benchmark_acceptance import validate_benchmark_record, is_expected_cuda
 
 ROOT = Path('/data/rdm-workspace/rdm-sets')
 parser = argparse.ArgumentParser()
+parser.add_argument('--case-timeout-seconds', type=int, default=1200)
+parser.add_argument('--gpus', default='4,5', choices=['4,5', '6,7'])
 parser.add_argument('--resume-summary', type=Path)
 parser.add_argument('--only-case', type=int, nargs=2, metavar=('GROUP', 'MICRO'))
 parser.add_argument('--config')
 parser.add_argument('--reference-root')
 parser.add_argument('--state-prefix', default='checkpoint-sweep')
 args = parser.parse_args()
+os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
 assert re.fullmatch('[a-z0-9-]+', args.state_prefix)
 REPO = Path(__file__).resolve().parents[1]
 STAMP = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
@@ -27,7 +30,7 @@ OUT.mkdir(parents=True)
 LATEST = ROOT / 'control' / (args.state_prefix + '-latest.json')
 state = {'started_utc': STAMP, 'source': str(REPO),
          'source_commit': (REPO / 'SOURCE_COMMIT').read_text().strip(),
-         'output': str(OUT), 'global_batch': 32, 'physical_gpus': [4, 5],
+         'output': str(OUT), 'global_batch': 32, 'physical_gpus': list(map(int, args.gpus.split(','))),
          'formal_training_started': False, 'status': 'running', 'cases': []}
 if args.config:
     state['config'] = args.config
@@ -36,6 +39,7 @@ if args.config:
     if not config_path.is_absolute():
         config_path = REPO / config_path
     config = yaml.safe_load(config_path.read_text())
+    state['global_batch'] = int(config['active_global_batch'])
     spatial_enabled = bool(config.get('spatial_gan', {}).get('enabled', False))
     probe_request = config.get('cache', {}).get('refresh_probe_rows') if spatial_enabled else None
     retained_rows = config['window']['size'] - config['window']['stride'] if spatial_enabled else None
@@ -64,7 +68,7 @@ def publish():
 
 
 def gpu_state():
-    text = subprocess.check_output(['nvidia-smi', '-i', '4,5',
+    text = subprocess.check_output(['nvidia-smi', '-i', args.gpus,
         '--query-gpu=index,memory.used,memory.total,utilization.gpu',
         '--format=csv,noheader,nounits'], text=True, timeout=10)
     return [list(map(int, row.split(','))) for row in text.splitlines()]
@@ -144,7 +148,7 @@ def run_case(group, micro, iterations=2, label=None):
     if args.reference_root:
         command.extend(['--reference-root', args.reference_root])
     row = {'name': name, 'group_size': group, 'micro_batch': micro,
-           'grad_accum': 16 // micro, 'command': command, 'status': 'running',
+           'grad_accum': state['global_batch'] // (2 * micro), 'command': command, 'status': 'running',
            'log': str(case_dir / 'run.log'), 'nvml_peak_mib': {str(x[0]): x[1] for x in idle}}
     state['cases'].append(row)
     publish()
@@ -157,7 +161,7 @@ def run_case(group, micro, iterations=2, label=None):
             while process.poll() is None:
                 for index, used, total, utilization in gpu_state():
                     row['nvml_peak_mib'][str(index)] = max(row['nvml_peak_mib'][str(index)], used)
-                if time.monotonic() - started > 1200:
+                if time.monotonic() - started > args.case_timeout_seconds:
                     row['timeout'] = True
                     row['cleanup'] = stop_test_tree(process, case_dir)
                     break

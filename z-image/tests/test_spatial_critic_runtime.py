@@ -316,3 +316,27 @@ class SpatialRuntimeTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_clip_after_full_chunk_accumulation_and_rank_mean():
+    fixture = SpatialRuntimeTests()
+    fixture.setUp()
+    fixture.cfg.grad_clip = 0.01
+    runtime = fixture.runtime(2)
+    observed = []
+    original = runtime.optimizer.step
+    def checked_step(*args, **kwargs):
+        norm = torch.stack([p.grad.double().square().sum() for p in runtime.critic.parameters()]).sum().sqrt()
+        observed.append(float(norm))
+        assert float(norm) <= .01000001
+        return original(*args, **kwargs)
+    runtime.optimizer.step = checked_step
+    # Simulate a remote rank contributing 3x the local accumulated gradient.
+    # The resulting rank mean is 2x, and clipping must follow that mean.
+    def rank_mean(flat):
+        flat.mul_(2)
+    with mock.patch.object(module, 'all_reduce_mean_', side_effect=rank_mean):
+        logs = runtime.update(*fixture.inputs())
+    assert len(observed) == 1 and not logs['gan/d_skipped']
+    assert logs['gan/d_grad_norm'] > .01
+    assert 0 < logs['gan/d_clip_coefficient'] < 1

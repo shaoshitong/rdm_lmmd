@@ -106,8 +106,12 @@ def validate_step_record(row, *, spatial=False, generation_steps=2, spatial_head
                  f'{prefix}D update was skipped or not recorded')
         _require(_number(logs, prefix + 'gan/d_updates') == after[k-1],
                  f'{prefix}logged D update count disagrees with the runtime counter')
-        for name in ('gan/d_grad_norm', 'pixel_adv_grad_norm'):
-            _number(logs, prefix + name, positive=True)
+        _number(logs, prefix + 'gan/d_grad_norm', positive=True)
+        if logs.get('pixel_gc/balance_mode') == 'fixed':
+            _number(logs, prefix + 'pixel_adv_lambda', positive=True)
+            _require(prefix + 'pixel_adv_grad_norm' not in logs, 'Fixed mode must omit balancing norms')
+        else:
+            _number(logs, prefix + 'pixel_adv_grad_norm', positive=True)
         for name in ('gan/d_loss', 'gan/g_loss'):
             _number(logs, prefix + name)
         for head in spatial_heads:

@@ -144,7 +144,8 @@ def _reduce_norm_squares(squares, device, norm_reduce_fn):
 
 def pixel_gradcache_backward(chunk_inputs, generate_fn, encode_images_fn, loss_terms_fn, balance_fn,
                              *, step_for_feature=step_for_feature, preserve_rng_state=True,
-                             diagnose_replay=True, replay_atol=None, norm_reduce_fn=None):
+                             diagnose_replay=True, replay_atol=None, norm_reduce_fn=None,
+                             fixed_weights=None):
     """Accumulate exact first-order generator gradients; no optimizer step is taken.
 
     Args:
@@ -157,6 +158,8 @@ def pixel_gradcache_backward(chunk_inputs, generate_fn, encode_images_fn, loss_t
         balance_fn(k,mmd_pixel_norm,adv_pixel_norm): (detached lambda,logs), with globally
             SUM-reduced L2 norms. Use the existing adaptive weight (e.g. 1.5) here;
             do not reduce these norms a second time. Never called for adv=None.
+        fixed_weights: optional per-step fixed GAN coefficients. Combines feature
+            cotangents before the encoder VJP; no separate gradient norms or balancing.
         norm_reduce_fn: optional SUM reducer for the float64 norm-square matrix. The
             default performs one distributed SUM when a process group is initialized.
         preserve_rng_state: replay global torch CPU/current-device CUDA RNG for both
@@ -214,8 +217,16 @@ def pixel_gradcache_backward(chunk_inputs, generate_fn, encode_images_fn, loss_t
             if not names:
                 raise ValueError(f"Step {k} has losses but no feature leaves")
             force, adv = terms[k]
-            feature_grads[k] = (_feature_cotangent(force, leaves, names),
-                                {} if adv is None else _feature_cotangent(adv, leaves, names))
+            if fixed_weights is not None:
+                weight = float(fixed_weights[k]) if adv is not None else 0.0
+                if not math.isfinite(weight) or weight < 0:
+                    raise ValueError('Fixed GAN weights must be finite and nonnegative')
+                combined = force if adv is None else force + weight * adv
+                feature_grads[k] = (_feature_cotangent(combined, leaves, names), {})
+                del combined
+            else:
+                feature_grads[k] = (_feature_cotangent(force, leaves, names),
+                                    {} if adv is None else _feature_cotangent(adv, leaves, names))
             values[k] = (float(force.detach()), 0.0 if adv is None else float(adv.detach()))
             has_adv[k] = adv is not None
         del terms, force, adv, leaves
@@ -232,13 +243,14 @@ def pixel_gradcache_backward(chunk_inputs, generate_fn, encode_images_fn, loss_t
             cached = {}
             for pos, k in enumerate(steps):
                 pair = []
-                for which in (0, 1):
+                for which in ((0,) if fixed_weights is not None else (0, 1)):
                     grad = _pixel_vjp(features, feature_grads[k][which], offset, batch, pixels, k - 1)
                     # An absent warmup adv needs no full-resolution GPU zero allocation.
                     cpu_grad = (torch.zeros_like(saved["images"][k - 1]) if grad is None else
                                 grad.to(device="cpu", dtype=torch.float32, copy=True))
                     pair.append(cpu_grad)
-                    squares[pos][which] += float(cpu_grad.double().square().sum())
+                    if fixed_weights is None:
+                        squares[pos][which] += float(cpu_grad.double().square().sum())
                     del grad
                 cached[k] = pair
             pixel_cache.append(cached)
@@ -247,12 +259,17 @@ def pixel_gradcache_backward(chunk_inputs, generate_fn, encode_images_fn, loss_t
     del feature_grads
 
     # Balancing happens in shared raw-pixel coordinates, after a single cross-rank SUM.
-    totals = _reduce_norm_squares(squares, raw_cache[0]["devices"][0], norm_reduce_fn)
+    totals = (_reduce_norm_squares(squares, raw_cache[0]["devices"][0], norm_reduce_fn)
+              if fixed_weights is None else None)
+    logs["pixel_gc/balance_mode"] = "fixed" if fixed_weights is not None else "gradient_ratio"
     lambdas = {}
     loss_float = 0.0
     for pos, k in enumerate(steps):
-        mmd_norm, adv_norm = (float(value.sqrt()) for value in totals[pos])
-        if has_adv[k]:
+        if fixed_weights is not None:
+            weight = float(fixed_weights[k]) if has_adv[k] else 0.0
+            logs[f"s{k}/gan/lambda"] = weight
+        elif has_adv[k]:
+            mmd_norm, adv_norm = (float(value.sqrt()) for value in totals[pos])
             weight, sublogs = balance_fn(k, mmd_norm, adv_norm)
             weight = float(weight.detach()) if isinstance(weight, torch.Tensor) else float(weight)
             if not math.isfinite(weight):
@@ -261,8 +278,10 @@ def pixel_gradcache_backward(chunk_inputs, generate_fn, encode_images_fn, loss_t
         else:
             weight = 0.0
         lambdas[k] = weight
-        logs[f"s{k}/pixel_mmd_grad_norm"] = mmd_norm
-        logs[f"s{k}/pixel_adv_grad_norm"] = adv_norm
+        if fixed_weights is None:
+            mmd_norm, adv_norm = (float(value.sqrt()) for value in totals[pos])
+            logs[f"s{k}/pixel_mmd_grad_norm"] = mmd_norm
+            logs[f"s{k}/pixel_adv_grad_norm"] = adv_norm
         logs[f"s{k}/pixel_adv_lambda"] = weight
         logs[f"s{k}/gan/g_active"] = has_adv[k]
         logs[f"s{k}/loss_mmd_force"] = values[k][0]
@@ -285,13 +304,15 @@ def pixel_gradcache_backward(chunk_inputs, generate_fn, encode_images_fn, loss_t
                     raise RuntimeError(f"Raw generator replay differs by {replay_max_abs}, limit {replay_atol}")
             surrogate = None
             for k in steps:
-                mmd, adv = cached[k]
-                gradient = (mmd + lambdas[k] * adv).to(device=raw[k - 1].device)
+                pair = cached[k]
+                gradient = (pair[0] if fixed_weights is not None else
+                            pair[0] + lambdas[k] * pair[1]).to(device=raw[k - 1].device)
                 term = (raw[k - 1].float() * gradient).sum()
                 surrogate = term if surrogate is None else surrogate + term
             if surrogate.requires_grad:
                 surrogate.backward()
-            elif any(torch.count_nonzero(pair[0] + lambdas[k] * pair[1]) for k, pair in cached.items()):
+            elif any(torch.count_nonzero(pair[0] if fixed_weights is not None else
+                                         pair[0] + lambdas[k] * pair[1]) for k, pair in cached.items()):
                 raise RuntimeError("Generator replay has nonzero pixel cotangents but no autograd graph")
             del raw, surrogate, term, gradient
     logs["pixel_gc/generator_replay_max_abs"] = replay_max_abs if diagnose_replay or replay_atol is not None else None

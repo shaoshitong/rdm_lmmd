@@ -404,3 +404,29 @@ def test_microbatch_and_critic_only_warmup(store_root, micro, critic_micro):
         for p, q in zip(trainer.generator.model.parameters(), reference.generator.model.parameters()):
             torch.testing.assert_close(p, q, rtol=1e-4, atol=2e-6)
         _assert_aligned(trainer)
+
+
+def test_fixed_gan_route_and_scheduled_d_lr_without_balance_norms(store_root):
+    from rdm.sw_lmmd.config import LRSchedule
+    trainer = build(store_root, weight=5e-5, gan_loss='ns', d_lr=1e-5, global_gan=())
+    for runtime in trainer.step_critics:
+        runtime.cfg.adaptive = False
+        runtime.cfg.grad_clip = .01
+    trainer.discriminator_lr_schedule = LRSchedule(name='cosine', total_steps=3,
+        min_lr_ratio=.5, end_at_last_step=True)
+    trainer.bootstrap()
+    for iteration in range(3):
+        logs = trainer.step()
+        assert not logs['skipped']
+        assert logs['pixel_gc/balance_mode'] == 'fixed'
+        assert not any('grad_ratio' in key or 'pixel_adv_grad_norm' in key for key in logs)
+        for k in [1, 2]:
+            assert logs[f's{k}/gan/lambda'] == 5e-5
+            assert logs[f's{k}/gan/d_lr'] == pytest.approx(
+                1e-5 * trainer.discriminator_lr_schedule.factor(iteration))
+            assert 0 < logs[f's{k}/gan/d_clip_coefficient'] <= 1
+    state = trainer.state_dict()
+    assert state['discriminator_lr_schedule']['end_at_last_step']
+    wrong = build(store_root, gan_loss='ns', global_gan=())
+    with pytest.raises(RuntimeError, match='Discriminator LR schedule'):
+        wrong.load_state_dict(state)

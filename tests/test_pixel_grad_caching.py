@@ -275,3 +275,34 @@ def test_cross_step_loss_or_encoder_dependency_is_rejected():
     separate_loss = lambda leaves: ({1: (leaves["s1/a"].square().mean(), None)}, {})
     with pytest.raises(ValueError, match="encoder's step feature"):
         pixel_gradcache_backward([torch.ones(2, 3)], generate, cross_encoder, separate_loss, _balance)
+
+
+@pytest.mark.parametrize('chunk_size', [1, 3, 7])
+@pytest.mark.parametrize('warmup', [False, True])
+def test_fixed_weights_match_full_graph_without_norm_or_balance(chunk_size, warmup):
+    generator, encoder, critic, inputs = _problem()
+    expected = copy.deepcopy(generator)
+    weights = {1: 5e-5, 2: 1e-4}
+    first = expected(inputs).tanh()
+    images = [first, first.square() + 0.2 * first]
+    features = {}
+    for k, image in enumerate(images, 1):
+        f = encoder(image).sin()
+        features[f's{k}/global'] = torch.cat([f, torch.full_like(f[:, :1], .3)], 1)
+        features[f's{k}/spatial'] = f.reshape(-1, 2, 1, 3)
+    _, _, terms, _ = _callbacks(expected, encoder, critic)
+    pairs, _ = terms(features, warmup=warmup)
+    total = sum(force + (0 if adv is None else weights[k] * adv)
+                for k, (force, adv) in pairs.items())
+    total.backward()
+    generate, encode, terms, _ = _callbacks(generator, encoder, critic)
+    def forbidden(*args):
+        raise AssertionError('Fixed weights must never call the gradient balancing/reducer')
+    loss, logs = pixel_gradcache_backward(list(inputs.split(chunk_size)), generate, encode,
+        lambda f: terms(f, warmup=warmup), forbidden, fixed_weights=weights,
+        norm_reduce_fn=forbidden, diagnose_replay=False)
+    assert loss == pytest.approx(float(total.detach()), abs=2e-6)
+    for actual, oracle in zip(generator.parameters(), expected.parameters()):
+        torch.testing.assert_close(actual.grad, oracle.grad, rtol=2e-5, atol=2e-6)
+    assert not any('pixel_mmd_grad_norm' in key or 'pixel_adv_grad_norm' in key for key in logs)
+    assert logs['s1/gan/lambda'] == (0 if warmup else weights[1])

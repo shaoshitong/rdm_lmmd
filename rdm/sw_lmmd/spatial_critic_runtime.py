@@ -8,6 +8,7 @@ the existing GAN/step weights and performs adaptive balancing in image space.
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import asdict
 
 import torch
@@ -109,6 +110,8 @@ class SpatialGANRuntime:
                          'seed': self.seed, 'encoder_weight': self.encoder_weight,
                          'global_conditional': bool(cfg.conditional),
                          'loss': cfg.loss, 'lr': float(cfg.lr), 'betas': list(cfg.betas)}
+        if cfg.grad_clip > 0:
+            self.contract['grad_clip'] = float(cfg.grad_clip)
 
     @property
     def conditional(self):
@@ -172,7 +175,16 @@ class SpatialGANRuntime:
         for name in self.global_names:
             self._last_d_grad_norms[f'gan/{name}/d_grad_norm'] = norm(
                 self.critic['global'].heads[name].parameters())
-        return bool(torch.isfinite(flat).all())
+        finite = bool(torch.isfinite(flat).all()) and math.isfinite(self._last_d_grad_norms['gan/d_grad_norm'])
+        if self.cfg.grad_clip > 0:
+            # All chunks and the cross-rank mean are complete. Reuse the logged
+            # total norm; no extra backward or per-layer telemetry is required.
+            norm_value = self._last_d_grad_norms['gan/d_grad_norm']
+            coefficient = min(1.0, self.cfg.grad_clip / (norm_value + 1e-6)) if finite else 0.0
+            if finite:
+                flat.mul_(coefficient)  # parameter.grad views share this flat storage
+            self._last_d_grad_norms['gan/d_clip_coefficient'] = coefficient
+        return finite
 
     def update(self, fake_spatial, real_spatial, fake_global, real_global, tau):
         rows = self._rows(fake_spatial, fake_global, tau)

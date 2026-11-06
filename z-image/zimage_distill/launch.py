@@ -235,6 +235,7 @@ def build_trainer(cfg, device: str = "cuda") -> MultiStepTrainer:
         real_images = ReferenceImageStore(images_path)
         extra = {'reference_images': real_images,
                  'adaptive_d_lr': _block(cfg, 'adaptive_d_lr'),
+                 'discriminator_lr_schedule': _block(cfg, 'discriminator_lr_schedule'),
                  'adaptive_d_lr_allow_legacy_resume': getattr(cfg, 'adaptive_d_lr_allow_legacy_resume', False),
                  'spatial_battery': SpatialBattery(
                      device=device, qwen_snapshot=spatial_cfg.get('qwen_snapshot'),
