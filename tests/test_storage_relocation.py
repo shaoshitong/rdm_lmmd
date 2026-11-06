@@ -25,6 +25,10 @@ class TransferTests(unittest.TestCase):
         result=self.transfer();self.assertTrue(result['final_named_SHA_readback'])
         self.assertEqual(self.destination.read_bytes(),self.source.read_bytes())
         self.assertTrue((self.root/'control/files/file.json').exists())
+    def test_stale_partial_is_preserved_and_fresh_name_is_used(self):
+        self.destination.parent.mkdir();stale=self.destination.with_name(self.destination.name+'.partial');stale.write_bytes(b'interrupted')
+        self.transfer();self.assertEqual(stale.read_bytes(),b'interrupted')
+        self.assertEqual(self.destination.read_bytes(),self.source.read_bytes())
     def test_wrong_source_hash_keeps_original_no_receipt(self):
         with self.assertRaises(AssertionError):self.transfer('0'*64)
         self.assertTrue(self.source.exists());self.assertFalse(self.destination.exists())

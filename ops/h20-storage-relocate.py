@@ -88,7 +88,7 @@ def transfer(source, destination, expected_size, expected_sha, receipt_name):
         assert destination.stat().st_size==expected_size and sha(destination)==expected_sha
     else:
         assert source.is_file() and not source.is_symlink() and source.stat().st_size==expected_size
-        before=stat(source);temporary=destination.with_name(destination.name+'.partial')
+        before=stat(source);temporary=destination.with_name(destination.name+'.partial-'+str(os.getpid()))
         destination.parent.mkdir(parents=True,exist_ok=True)
         assert not temporary.is_symlink()
         digest=hashlib.sha256();copied=0

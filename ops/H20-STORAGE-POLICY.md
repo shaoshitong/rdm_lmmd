@@ -68,3 +68,13 @@ Exact destination/official SHA/size must match, and the object mtime must predat
 the original full verification. Mismatches or later modifications require a full
 hash read; no original verification timestamp is fabricated. New objects always
 receive full final-name SHA readback. Seven failure/reuse tests cover this path.
+
+
+The interrupted shard73 left an old `.partial` object. Reopening that object for
+writing returned ENOSPC while `/data` still had120GB free (the root filesystem
+had558MB free). The exact remote command, true exit1, last30, GPU and filesystem
+snapshot are retained in `control/storage-relocation-20261106/failure-enospc-v6.json`.
+This does not establish the backend's exact ENOSPC cause. New attempts use unique
+PID-suffixed temporary objects, retaining the old failed object and diagnostics;
+no shared mount/cache configuration is changed. Eight tests include stale partial
+preservation. New temporary names still require a complete final-name SHA readback.
