@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 D=ROOT/'.cache/storage-tools';D.mkdir(exist_ok=True)
 version='1.53.3-4ubuntu1.22.04.5'
 metadata=subprocess.check_output(['apt-cache','show','rclone='+version],text=True)
