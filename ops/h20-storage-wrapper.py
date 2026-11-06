@@ -7,7 +7,9 @@ import runpy
 import traceback
 
 SOURCE=Path(__file__).resolve().parent/'h20-storage-relocate.py'
-ROOT=Path('/data/shaoshitong/rdm-sets')
+BASE=Path('/data/rdm-workspace')
+if not BASE.exists():BASE=Path('/data/shaoshitong')
+ROOT=BASE/'rdm-sets'
 C=ROOT/'control/storage-relocation-20261106'
 C.mkdir(parents=True,exist_ok=True)
 code=1

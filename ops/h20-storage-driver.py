@@ -15,7 +15,7 @@ import traceback
 
 OLD=Path('/data/shaoshitong')
 NEW=Path('/data/rdm-workspace')
-SOURCE_NAME='RDM-storage-relocation-v3'
+SOURCE_NAME='RDM-storage-relocation-v5'
 
 def control():
     return (NEW if NEW.exists() else OLD)/'rdm-sets/control/storage-relocation-20261106'
@@ -28,8 +28,11 @@ def main():
         write('driver-status.json',dict(phase='waiting_for_full_archive',epoch=time.time()))
         time.sleep(10)
     assert (control()/'archive.exit').read_text().strip()=='0', 'Archive failed; keep original files and inspect archive.log'
-    source=OLD/SOURCE_NAME
-    runpy.run_path(str(source/'ops/h20-storage-rename.py'),run_name='__main__')
+    if OLD.exists():
+        source=OLD/SOURCE_NAME
+        runpy.run_path(str(source/'ops/h20-storage-rename.py'),run_name='__main__')
+    else:
+        assert NEW.is_dir() and json.loads((control()/'rename.json').read_text())['passed']
     source=NEW/SOURCE_NAME;root=NEW/'rdm-sets'
     env=os.environ.copy();env.update(CUDA_VISIBLE_DEVICES='',TMPDIR=str(root/'.cache/tmp'),
         PYTHONPATH=str(source)+':'+str(source/'z-image'),HF_HUB_OFFLINE='1',TRANSFORMERS_OFFLINE='1')

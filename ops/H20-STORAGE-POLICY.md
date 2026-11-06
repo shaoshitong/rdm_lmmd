@@ -51,3 +51,12 @@ headroom after the copy, and checks full SHA on the staged final filename. It
 starts no training. Pass that ordinary-filesystem path for both load_from and
 resume_from; the original snapshot did not save G Adam history. The archival
 resume pointer must not be passed directly to a mmap loader.
+
+
+The user prioritized the naming correction during transfer. The first storage
+worker and waiting controller were deliberately terminated with SIGTERM (recorded
+as a controlled interruption, not a training failure). Workspace naming and
+prefix repairs were then completed immediately, with no old-name alias. The
+resumable archiver continues in the new namespace; existing complete objects
+are rehashed before use, and incomplete objects never authorize source removal.
+The completion controller also supports naming already completed in this order.
