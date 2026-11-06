@@ -58,9 +58,10 @@ def validate_judged(rows, metadata):
     return actual_raw, actual_parsed
 
 
-def preserve(run, completion):
+def preserve(run, completion, archive_root=None):
     """Stream only remote outputs; verify final-named full archive; retain source."""
-    dest = Path('/mnt/airs-business/shaoshitong/rdm-sets/evaluations')/(run.name+'.tar.gz')
+    dest = Path(archive_root or '/mnt/airs-business/shaoshitong/rdm-sets/evaluations')/(run.name+'.tar.gz')
+    dest.parent.mkdir(parents=True,exist_ok=True)
     assert not dest.exists(), 'Never overwrite an existing benchmark archive'
     files = [(p, p.stat().st_size, p.stat().st_mtime_ns) for p in sorted(run.rglob('*')) if p.is_file()]
     assert all(not p.is_symlink() for p, _, _ in files)
