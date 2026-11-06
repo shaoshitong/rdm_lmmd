@@ -12,32 +12,80 @@
 
 ## What this fork is
 
-### H20 Z-Image experiment (2026-11-04)
+### Current H20 protocol: two separate experiments (2026-11-06)
 
-The current H20 experiment uses two generation steps at 1024 px. Its GAN has
-exactly two frozen spatial image branches, **DINOv3 and Qwen3-VL-4B-Instruct**:
-both reference and generated images pass through the same encoders, and the
-PatchGAN heads condition on Qwen3-4B caption features. The GAN loss is softplus.
-The original MMD streams remain **DINOv3, SigLIP2 and AIMv2**.
+Run **both groups from the original pretrained Z-Image-Turbo**, with independent
+optimizers, sliding windows and output directories. Group2 must not resume from
+Group1. The ablation tests whether adding GAN improves on MMD alone.
 
-The latest explicit user setting raises the generator base LR to **2.83e-5**,
-with 100-step warmup then cosine decay. Discriminator base LR is **1e-5** with
-the checkpointed adaptive controller. The running job uses physical GPUs 4/5,
-global batch 32, microbatch 2, accumulation 8, FA3 and activation checkpoint
-groups of two blocks. It saves a rolling resume every 50 iterations, targeting
-500. Actual step-50/100 saves and metadata readbacks have passed; completion of
-the 500-step run is still pending. Only the existing global `grad_norm` is logged.
+| Group | Generator objective | Discriminator | Configuration |
+|---|---|---|---|
+| 1: MMD only | MMD-force surrogate | Disabled; no critic is constructed or updated | [MMD-only YAML](z-image/configs/zimage_2step_1024_dino_qwenvl_k512_b64_mmd_only_from0.yaml) |
+| 2: MMD + GAN | Same MMD-force + fixed `5e-5 × GAN-G` | Softplus GAN, DINOv3 + Qwen3-VL spatial heads | [MMD+GAN YAML](z-image/configs/zimage_2step_1024_dino_qwenvl_k512_b64_fixed_from0.yaml) |
 
-- [Current configuration](z-image/configs/zimage_2step_1024_twohead_glr10_h20_fa3.yaml)
-- [Run entry, validation, restart scope and optimizer limitation](ops/H20-TWOHEAD-LR10.md)
-- [Read-only checkpoint and final integrity verification](ops/H20-TWOHEAD-READONLY-AUDIT.md)
-- [Actual training-prompt reference / initial / iteration-100 previews](ops/H20-TRAINING-PROMPT-PREVIEW.md)
+**Keep the following settings identical between groups:**
+
+- 1024 px, two generation steps, sigmas `[1.0, 0.75]`, renoise enabled;
+  pretrained0 initialization, training seed0, the same reference data and prompt order.
+- MMD image encoders: frozen **DINOv3 + Qwen3-VL-4B-Instruct**. No AIM or SigLIP.
+  Qwen3-4B text features and the student's original text conditioning are unchanged.
+- Window `K=512`, active global batch/stride `B=64`,448 retained rows per step.
+  Two GPUs × microbatch2 × accumulation16; FA3 and checkpoint groups of two blocks.
+- G LR warms up for100 updates to `2.83e-5`, then cosine decays to **`1.415e-5`
+  on update500**. GAN and MMD share this G optimizer in Group2.
+- Global G gradient clipping at4.0;500 total updates; retain every50-update
+  student checkpoint, plus rolling resume. Log raw MMD² separately from its
+  force surrogate. All weights, data, caches and environments stay remote.
+
+**Group2 only:** no gradient-norm weighting or gradient-ratio controller.
+The GAN coefficient is fixed at `5e-5`; MMD is unchanged. GAN-G starts on update51
+following50 D-only warmup updates. Both reference and generated images pass
+through the same frozen DINOv3/Qwen-VL spatial encoders and preprocessing.
+D LR follows a step-based cosine from `1e-5` to **`5e-6` on update500**, then
+holds; loss-driven LR adaptation is disabled. D gradients are clipped at4.0
+after chunk accumulation and cross-rank mean. Report original losses; clipping
+bounds gradients rather than altering logged loss values. No per-layer or
+parameter-update telemetry is added.
+
+#### Run the pair
+
+On H20 with the existing data/environment layout, from the source directory:
+
+```bash
+# Group1 first, then a separate fresh0 Group2 run, using physical GPUs6/7.
+bash ops/h20-run-k512-b64-fixed.sh all
+
+# Alternatively run either group independently:
+bash ops/h20-run-k512-b64-fixed.sh mmd-only
+bash ops/h20-run-k512-b64-fixed.sh mmd-gan
+```
+
+The entry waits for GPUs6/7 to become idle; it never terminates foreign jobs.
+Each group passes CPU checks and three complete bounded GPU updates plus a
+probe/refresh before its formal fresh0 run. Group1 validates G/MMD updates;
+Group2 additionally validates both D updates and the active fixed-weight GAN-G
+path. Existing outputs are never overwritten or silently restarted.
+The two experiment names end in `k512-b64-mmd-only-from0` and
+`k512-b64-fixed-from0`, with separate logs, archive receipts and output directories.
+
+#### Compare the results
+
+For both groups, retain checkpoints50/100/…/500 and compare the same complex
+portrait/multi-object/text-layout prompts, seeds and sampling settings against
+pretrained0. Keep full1024-pixel images. Plot every recorded iteration of raw
+MMD² and G training loss; Group2 also reports D/G adversarial losses and G/D LR.
+Group1 has no D/GAN curves. Evaluate both final500 checkpoints using the same
+full Qwen-Image-Bench1024 protocol and official aggregation, alongside the
+original Turbo2-step and9-step baselines. Compare image quality and benchmark
+scores; G total losses from the two different objectives are not directly
+comparable. These are experiment requirements, not completed results.
+
+- [Implementation, clipping, storage and resume limitations](ops/H20-K512-B64-FIXED.md)
 - [Mac control and historical orchestration source](ops/local-control/README.md)
 
-The published branch includes the running training version `a25e4c4` and later
-observation/plotting/preview tools. Those later tools are separate from the
-immutable running checkout. Weights, datasets, environments and credentials
-remain outside this code repository.
+Historical configs and audit scripts are retained for reproducibility. Older
+three-encoder MMD and adaptive-gradient-weight experiments are **not** the
+current two-group protocol. Weights, environments and credentials are not in Git.
 
 ### Original method overview
 
@@ -159,7 +207,11 @@ exactly:
 So one config ports from a single GPU to a 32-rank job unchanged. `B = 128` divides 1, 2, 4, 8,
 16 and 32.
 
-### Optional: an adversarial term
+### Historical optional adaptive adversarial term
+
+> This section describes the original optional adaptive implementation. The
+> current two-group H20 protocol above disables adaptive weighting and uses a
+> fixed coefficient in Group2.
 
 `gan.enabled: true` adds a conditional critic (`rdm/sw_lmmd/adversarial.py`) on the same pooled
 features the force compares. It has one projection head per encoder, conditioned on `τ(c)`, and

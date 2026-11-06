@@ -45,7 +45,8 @@ cfg.zimage['attention_backend'] = a.backend
 cfg.grad_checkpointing = a.checkpoint_group_size != 0
 cfg.zimage['checkpoint_group_size'] = max(1, a.checkpoint_group_size)
 # Benchmark the steady-state generator adversarial path without burning 50 formal steps.
-cfg.gan['g_start_step'] = 0
+if cfg.gan.get('enabled', False):
+    cfg.gan['g_start_step'] = 0
 device = f'cuda:{local_rank}'
 trainer = build_trainer(cfg, device=device)
 gan_heads = list(trainer.step_critics[0].names) if spatial_enabled else None
@@ -115,7 +116,7 @@ if rank == 0:
     out = a.out_dir / f'benchmark-{a.backend}-micro{a.micro_batch}{suffix}.json'
     record = {'micro_batch': a.micro_batch, 'backend': a.backend,
               'checkpoint_group_size': a.checkpoint_group_size,
-              'global_batch': active_batch, 'generator_gan_active': True, 'steps': rows,
+              'global_batch': active_batch, 'generator_gan_active': bool(cfg.gan.get('enabled', False)), 'steps': rows,
               'probe_refresh': extra, 'probe_refresh_contract': probe_contract, 'spatial_patchgan': spatial_enabled,
               'generation_steps': trainer.num_steps, 'world_size': world,
               'gan_heads': gan_heads,
@@ -126,7 +127,8 @@ if rank == 0:
               'G_base_lr': float(cfg.lr), 'D_base_lr': float(cfg.gan['lr']),
               'adaptive_D_lr': bool(getattr(cfg, 'adaptive_d_lr', {}).get('enabled', False)),
               'formal_training_started': False,
-              'bounded_test_overrides': {'gan.g_start_step': {'configured': configured_g_start, 'actual': 0}}}
+              'bounded_test_overrides': ({'gan.g_start_step': {'configured': configured_g_start, 'actual': 0}}
+                                         if cfg.gan.get('enabled', False) else {})}
     try:
         validate_benchmark_record(record, expected_spatial=spatial_enabled, expected_iterations=a.iterations,
                                   require_probe_refresh=a.probe_refresh)

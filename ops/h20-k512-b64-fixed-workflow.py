@@ -4,6 +4,7 @@
 This never restarts the old A, loads its weights, changes an active runtime,
 retries failed training, or touches GPUs other than6/7. All artifacts stay remote.
 """
+import argparse
 import datetime
 import fcntl
 import json
@@ -17,14 +18,18 @@ import sys
 import time
 import traceback
 
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--group', choices=['mmd-only','mmd-gan'], default='mmd-gan')
+ARGS=parser.parse_args()
+WITH_GAN=ARGS.group=='mmd-gan'
 ROOT=Path('/data/rdm-workspace/rdm-sets')
 CODE=Path(__file__).resolve().parents[1]
 CONTROL=ROOT/'control'
-PREFIX='dino-qwenvl-k512-b64-fixed-from0'
+PREFIX='dino-qwenvl-k512-b64-'+('fixed' if WITH_GAN else 'mmd-only')+'-from0'
 STATE=CONTROL/(PREFIX+'-status.json')
-CONFIG=CODE/'z-image/configs/zimage_2step_1024_dino_qwenvl_k512_b64_fixed_from0.yaml'
+CONFIG=CODE/'z-image/configs'/('zimage_2step_1024_dino_qwenvl_k512_b64_'+('fixed' if WITH_GAN else 'mmd_only')+'_from0.yaml')
 REFERENCE=ROOT/'zimage/zimage-ref-v1/reference_store_dino_qwenvl'
-EXP=ROOT/'zimage/work_dirs/zimage-2step-1024-dino-qwenvl-k512-b64-fixed-from0'
+EXP=ROOT/'zimage/work_dirs'/('zimage-2step-1024-'+PREFIX)
 ARCHIVE=Path('/mnt/airs-business/rdm-experiments/checkpoints')/EXP.name
 ARCHIVE_CONTROL=CONTROL/(PREFIX+'-archive')
 PYTHON=ROOT/'envs/rdm/bin/python'
@@ -45,7 +50,7 @@ def write(path,value):
 
 def status(phase,**kwargs):
     value=dict(phase=phase,utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        source=str(CODE),source_commit=SOURCE,physical_GPUs=[6,7],**kwargs)
+        source=str(CODE),source_commit=SOURCE,physical_GPUs=[6,7],experiment_group=ARGS.group,**kwargs)
     write(STATE,value);print(json.dumps(value),flush=True)
 
 
@@ -78,7 +83,7 @@ def require_success(p):
         text=p.log.read_text(errors='replace')
         write(CONTROL/(PREFIX+'-failure.json'),dict(stage=p.name,actual_exit=code,last30=text.splitlines()[-30:],
             command=json.loads((CONTROL/(PREFIX+'-'+p.name+'.command.json')).read_text()),
-            GPU4_5=gpu(),disk_free_bytes=shutil.disk_usage(ROOT).free))
+            GPU6_7=gpu(),disk_free_bytes=shutil.disk_usage(ROOT).free))
         raise RuntimeError(f'{p.name} failed with actual exit{code}; command/last30/GPU/disk preserved')
 
 
@@ -100,6 +105,8 @@ def ready():
 def preflight():
     import yaml
     cfg=yaml.safe_load(CONFIG.read_text())
+    assert cfg['gan']['enabled'] is WITH_GAN and cfg['spatial_gan']['enabled'] is WITH_GAN
+    assert cfg['exp_name']==EXP.name
     assert cfg['encoders']==NAMES and cfg['spatial_gan']['global_gan_encoders']==[]
     assert cfg['steps']==500 and cfg['save_freq']==cfg['resume_every']==50 and cfg['save_resume']
     assert cfg['lr']==2.83e-5 and cfg['gan']['lr']==1e-5 and cfg['gan']['loss']=='ns'
@@ -122,7 +129,7 @@ def preflight():
     assert not list(ARCHIVE.glob('step_*.pth')),'Existing successor archive requires deliberate recovery'
     probe=ARCHIVE/f'.write-test-{os.getpid()}';probe.write_text(SOURCE);assert probe.read_text()==SOURCE;probe.unlink()
     write(CONTROL/(PREFIX+'-preflight.json'),dict(passed=True,source_commit=SOURCE,init='official pretrained0',
-        MMD_encoders=NAMES,GAN_encoders=NAMES,steps=500,weights_every=50,expected_milestones=list(range(50,501,50)),
+        MMD_encoders=NAMES,GAN_encoders=NAMES if WITH_GAN else [],steps=500,weights_every=50,expected_milestones=list(range(50,501,50)),
         all_data_cache_outputs_remote=True,global_batch=64,micro_batch=2,grad_accum=16,
         G_base_lr=2.83e-5,D_base_lr=1e-5,original_grad_norm_only=True))
 
@@ -177,21 +184,22 @@ def main():
         status('waiting_GPU6_7',GPU6_7=idle)
         time.sleep(30)
     status('GPU6_7_idle_verified',GPU6_7=idle)
-    status('real_twoGPU_DG_smoke')
+    status('real_twoGPU_DG_smoke' if WITH_GAN else 'real_twoGPU_MMD_smoke')
     smoke=spawn('smoke',[PYTHON,CODE/'ops/h20-checkpoint-sweep.py','--only-case','2','2','--gpus','6,7','--case-timeout-seconds','3600',
         '--config',CONFIG,'--reference-root',REFERENCE,'--state-prefix',PREFIX+'-smoke'],'6,7')
     require_success(smoke)
     summary=json.loads((CONTROL/(PREFIX+'-smoke-latest.json')).read_text());case=summary['cases'][-1]
     assert summary['source_commit']==SOURCE and case['status']=='passed'
     record=json.loads(Path(case['result']).read_text())
-    validate_benchmark_record(record,expected_spatial=True,expected_iterations=3,expected_heads=NAMES,
+    validate_benchmark_record(record,expected_spatial=WITH_GAN,expected_iterations=3,expected_heads=NAMES if WITH_GAN else None,
         expected_probe_request=64,expected_retained_rows=448)
     assert record['MMD_encoders']==NAMES and record['source_commit']==SOURCE
     assert record['G_base_lr']==2.83e-5 and record['D_base_lr']==1e-5 and not record['adaptive_D_lr']
-    assert record['global_batch']==64
+    assert record['global_batch']==64 and record['generator_gan_active'] is WITH_GAN
     for ranks in record['steps']:
         for row in ranks:
-            assert row['logs']['pixel_gc/balance_mode']=='fixed'
+            if WITH_GAN:assert row['logs']['pixel_gc/balance_mode']=='fixed'
+            else:assert not any('/gan/' in key for key in row['logs'])
             assert row['logs']['active_rows']==64
             assert row['logs']['active_rows_per_rank']==32
     assert max(case['nvml_peak_mib'].values())<min(r[2] for r in gpu())*.95
@@ -200,8 +208,13 @@ def main():
             logs=row['logs']
             assert not any('siglip' in k or 'aimv2' in k for k in logs)
             assert all(logs[f's{k}/qwen3vl_4b/mmd2']>=0 for k in [1,2])
+    if not WITH_GAN:
+        assert len(record['probe_refresh'])==2
+        for rank in record['probe_refresh']:
+            assert rank['stats']['drift_probe_rows']==64
+            assert rank['stats']['refreshed_rows']==448
     write(CONTROL/(PREFIX+'-smoke-verified.json'),dict(passed=True,source_commit=SOURCE,
-        benchmark=str(case['result']),MMD_encoders=NAMES,three_complete_DG_updates=True,
+        benchmark=str(case['result']),MMD_encoders=NAMES,three_complete_updates=True,GAN_active=WITH_GAN,
         steady_seconds_excluding_first=case['mean_seconds'],GPU_peak_MiB=case['nvml_peak_mib']))
     # Smoke lives in a separate process. Formal launch reloads official pretrained0;
     # no state, optimizer, cache, RNG cursor or warmup updates are carried over.
@@ -251,7 +264,7 @@ if __name__=='__main__':
     except BaseException:
         traceback.print_exc();code=1
         try:
-            if OWNS:status('failed_preserve_outputs',GPU4_5=gpu(),disk_free_bytes=shutil.disk_usage(ROOT).free)
+            if OWNS:status('failed_preserve_outputs',GPU6_7=gpu(),disk_free_bytes=shutil.disk_usage(ROOT).free)
         except Exception:pass
     finally:
         for p in list(CHILDREN.values()):

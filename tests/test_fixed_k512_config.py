@@ -31,3 +31,16 @@ def test_batch_window_fixed_weight_and_exact_lr_endpoints():
     assert g.factor(700) == d.factor(700) == .5
     assert all(g.factor(i+1) <= g.factor(i) for i in range(100, 499))
     assert all(d.factor(i+1) <= d.factor(i) for i in range(499))
+
+
+def test_mmd_only_ablation_changes_only_identity_and_disables_gan():
+    together = yaml.safe_load(CONFIG.read_text())
+    alone = yaml.safe_load((CONFIG.parent/'zimage_2step_1024_dino_qwenvl_k512_b64_mmd_only_from0.yaml').read_text())
+    assert alone['exp_name'] != together['exp_name']
+    assert alone['gan']['enabled'] is False and alone['spatial_gan']['enabled'] is False
+    assert together['gan']['enabled'] is True and together['spatial_gan']['enabled'] is True
+    assert not alone.get('load_from') and not alone.get('resume_from')
+    alone['exp_name'] = together['exp_name']
+    alone['gan']['enabled'] = True
+    alone['spatial_gan']['enabled'] = True
+    assert alone == together, 'Ablation must preserve all non-GAN training settings'

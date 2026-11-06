@@ -1,4 +1,4 @@
-# Fresh pretrained0. Fixed GAN coefficient; DINOv3 + Qwen-VL for both GAN and MMD.
+# Group2: fresh pretrained0, MMD + fixed-weight GAN; DINOv3 + Qwen-VL.
 method: sw_lmmd
 mode: zimage
 exp_name: zimage-2step-1024-dino-qwenvl-k512-b64-fixed-from0
