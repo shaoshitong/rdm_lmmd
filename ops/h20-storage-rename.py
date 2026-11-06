@@ -62,7 +62,7 @@ def main():
             for name in fs:
                 path=Path(folder)/name
                 if path.is_symlink() or path.stat().st_size>2*1024**2:continue
-                if '/bin/' in str(path) or path.suffix in ('.pth','.egg-link','.pc','.cmake','.cfg','.conf','.sh'):
+                if '/bin/' in str(path) or path.name.startswith('_sysconfigdata') or (path.name=='Makefile' and '/python3.' in str(path)) or path.suffix in ('.pth','.egg-link','.pc','.cmake','.cfg','.conf','.sh'):
                     candidates.append(path)
     for path in candidates:
         if not path.is_file():continue
