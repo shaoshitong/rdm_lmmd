@@ -3,6 +3,8 @@ import hashlib
 import importlib.util
 from pathlib import Path
 import tempfile
+import os
+import json
 import unittest
 from unittest.mock import patch
 
@@ -35,5 +37,21 @@ class TransferTests(unittest.TestCase):
         with patch.object(m,'sha',return_value='0'*64):
             with self.assertRaises(AssertionError):self.transfer()
         self.assertTrue(self.source.exists());self.assertFalse((self.root/'control/files/file.json').exists())
+
+    def test_controlled_resume_reuses_completed_full_SHA_receipt(self):
+        self.transfer()
+        with patch.dict(os.environ,{'H20_REUSE_VERIFIED_OBJECTS':'1'}), patch.object(m,'sha',side_effect=AssertionError('unnecessary second read')):
+            result=self.transfer()
+        self.assertTrue(result['reused_previously_verified_object'])
+    def test_later_object_change_forces_full_hash_and_keeps_source(self):
+        result=self.transfer();self.destination.write_bytes(b'x'*self.source.stat().st_size)
+        os.utime(self.destination,(result['verified_epoch']+10,result['verified_epoch']+10))
+        with patch.dict(os.environ,{'H20_REUSE_VERIFIED_OBJECTS':'1'}):
+            with self.assertRaises(AssertionError):self.transfer()
+        self.assertTrue(self.source.exists())
+    def test_receipt_for_other_hash_never_authorizes_reuse(self):
+        self.transfer();p=self.root/'control/files/file.json';v=json.loads(p.read_text());v['sha256']='0'*64;p.write_text(json.dumps(v))
+        with patch.dict(os.environ,{'H20_REUSE_VERIFIED_OBJECTS':'1'}),patch.object(m,'sha',return_value='0'*64):
+            with self.assertRaises(AssertionError):self.transfer()
 
 if __name__=='__main__':unittest.main()

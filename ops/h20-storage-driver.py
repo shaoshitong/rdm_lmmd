@@ -15,7 +15,7 @@ import traceback
 
 OLD=Path('/data/shaoshitong')
 NEW=Path('/data/rdm-workspace')
-SOURCE_NAME='RDM-storage-relocation-v5'
+SOURCE_NAME='RDM-storage-relocation-v6'
 
 def control():
     return (NEW if NEW.exists() else OLD)/'rdm-sets/control/storage-relocation-20261106'

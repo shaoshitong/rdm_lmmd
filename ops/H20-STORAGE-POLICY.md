@@ -60,3 +60,11 @@ prefix repairs were then completed immediately, with no old-name alias. The
 resumable archiver continues in the new namespace; existing complete objects
 are rehashed before use, and incomplete objects never authorize source removal.
 The completion controller also supports naming already completed in this order.
+
+
+For a controlled namespace-only interruption, set `H20_REUSE_VERIFIED_OBJECTS=1`
+to reuse existing full-final-name SHA receipts in the unchanged object namespace.
+Exact destination/official SHA/size must match, and the object mtime must predate
+the original full verification. Mismatches or later modifications require a full
+hash read; no original verification timestamp is fabricated. New objects always
+receive full final-name SHA readback. Seven failure/reuse tests cover this path.

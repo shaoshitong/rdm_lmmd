@@ -69,6 +69,21 @@ def preflight():
 
 def transfer(source, destination, expected_size, expected_sha, receipt_name):
     receipt=CONTROL/'files'/receipt_name
+    # An explicit controlled-resume mode may reuse a previously completed full
+    # final-name SHA check. The object namespace is unchanged by local renaming;
+    # a later object mtime or a mismatched receipt forces a fresh full read.
+    if os.environ.get('H20_REUSE_VERIFIED_OBJECTS')=='1' and receipt.is_file() and destination.exists():
+        previous=json.loads(receipt.read_text())
+        st=destination.stat()
+        if previous.get('passed') is True and previous.get('final_named_SHA_readback') is True \
+                and previous.get('destination')==str(destination) and previous.get('sha256')==expected_sha \
+                and previous.get('bytes')==expected_size and st.st_size==expected_size \
+                and st.st_mtime<=previous.get('verified_epoch',0):
+            previous.update(source=str(source),reused_previously_verified_object=True,
+                metadata_rechecked_epoch=time.time(),unchanged_object_mtime=st.st_mtime)
+            write(receipt,previous)
+            print(json.dumps(dict(event='verified_object_reused',file=source.name,bytes=expected_size)),flush=True)
+            return previous
     if destination.exists():
         assert destination.stat().st_size==expected_size and sha(destination)==expected_sha
     else:
