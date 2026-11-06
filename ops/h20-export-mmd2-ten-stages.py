@@ -87,7 +87,7 @@ def main():
                         assert ImageChops.difference(cut, original).getbbox() is None
                         tile['pixel_sha256'] = hashlib.sha256(cut.tobytes()).hexdigest()
             files.append(dict(path=str(target), bytes=target.stat().st_size, sha256=sha(target),
-                              dimensions=[6144, 4416], tiles=tiles))
+                              dimensions=[10240, 4416], tiles=tiles))
             print(json.dumps(dict(page=str(target), complete=len(files), pixel_identical_tiles=len(files)*40)), flush=True)
     case_pages = []
     for case in IDS:
