@@ -39,17 +39,22 @@ def main():
     from PIL import Image
     for item in files:
         source=Path(item['path'])
-        assert source.parent==REMOTE and source.suffix=='.png' and 0<item['bytes']<=80*1024**2
+        assert source.parent==REMOTE and source.suffix=='.png' and 0<item['bytes']<=160*1024**2
         target=args.output/source.name
         if target.exists():
             raw=target.read_bytes()
         else:
-            script=('import pathlib,base64,hashlib,sys\n'
-                f'p=pathlib.Path({str(source)!r})\n'
-                'raw=p.read_bytes()\n'
-                f"assert len(raw)=={item['bytes']} and hashlib.sha256(raw).hexdigest()=={item['sha256']!r}\n"
-                'sys.stdout.write(base64.b64encode(raw).decode())\n')
-            raw=base64.b64decode(remote(args.ssh_helper,script),validate=True)
+            blocks=bytearray()
+            for offset in range(0,item['bytes'],8*1024**2):
+                count=min(8*1024**2,item['bytes']-offset)
+                script=('import pathlib,base64,sys\n'
+                    f'p=pathlib.Path({str(source)!r})\n'
+                    f"assert p.stat().st_size=={item['bytes']}\n"
+                    f'with p.open("rb") as stream:\n stream.seek({offset});raw=stream.read({count})\n'
+                    f'assert len(raw)=={count}\n'
+                    'sys.stdout.write(base64.b64encode(raw).decode())\n')
+                blocks.extend(base64.b64decode(remote(args.ssh_helper,script),validate=True))
+            raw=bytes(blocks)
         assert len(raw)==item['bytes'] and hashlib.sha256(raw).hexdigest()==item['sha256']
         with Image.open(io.BytesIO(raw)) as image:
             image.load()
