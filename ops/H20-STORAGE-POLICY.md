@@ -27,3 +27,19 @@ Keep frequently read contexts, model snapshots and the Python environment on
 node storage. Preserve all 50-step students. Global `/data` availability is
 shared with other users; measure it before launching and before checkpoint saves.
 A cumulative process write counter is not retained disk usage.
+
+
+Completion is driven by `h20-storage-driver.py` from a small neutral path outside
+the tree being renamed. It waits for the archive's real zero exit, atomically
+renames the workspace on the same filesystem, repairs absolute symlinks and text
+entrypoints (with original environment text retained), and exercises Torch2.8,
+PIL, the canonical image reader, pip and torchrun from the new prefix. The old
+personal-name path is not retained as an alias. Historical source and provenance
+are not rewritten; current observers explicitly project old recorded paths into
+the new namespace while preserving original commit binding.
+
+An optional distro rclone client was extracted and checksum-verified while
+investigating transfer speed; direct credentials are not available from the
+mounted account's current credential file. No credentials were extracted from
+process memory, no authentication/configuration was changed, and all actual
+migration uses the existing object mount. No client package was stored on Mac.
