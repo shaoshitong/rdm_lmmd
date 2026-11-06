@@ -43,3 +43,11 @@ investigating transfer speed; direct credentials are not available from the
 mounted account's current credential file. No credentials were extracted from
 process memory, no authentication/configuration was changed, and all actual
 migration uses the existing object mount. No client package was stored on Mac.
+
+
+Before a future resume, run `python3 ops/h20-stage-resume500.py` on H20. It copies
+only the selected existing final resume into `ROOT/staging`, requires64GiB spare
+headroom after the copy, and checks full SHA on the staged final filename. It
+starts no training. Pass that ordinary-filesystem path for both load_from and
+resume_from; the original snapshot did not save G Adam history. The archival
+resume pointer must not be passed directly to a mmap loader.
