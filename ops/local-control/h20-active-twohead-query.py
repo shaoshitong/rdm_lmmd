@@ -1,10 +1,10 @@
 # Bound read-only query for the authorized resume200-v3 trajectory.
 # Execute remotely through the existing owned SSH helper; no state mutation.
 import os
-os.environ.update(H20_CONTROL_PREFIX='twohead-lr10-resume200-500-v3',H20_TRAIN_SOURCE='/data/shaoshitong/RDM-twohead-resume200-v3',H20_TRAIN_SHA='1e06bf49569b4ee7847a417bc1ff1445bb8ba51b')
+os.environ.update(H20_CONTROL_PREFIX='twohead-lr10-resume200-500-v3',H20_TRAIN_SOURCE='/data/rdm-workspace/RDM-twohead-resume200-v3',H20_TRAIN_SHA='1e06bf49569b4ee7847a417bc1ff1445bb8ba51b')
 import contextlib,io,json,runpy
 with contextlib.redirect_stdout(io.StringIO()):
- ns=runpy.run_path('/data/shaoshitong/RDM-twohead-resume200-v3/ops/h20-observe-twohead-a.py',run_name='__main__')
+ ns=runpy.run_path('/data/rdm-workspace/RDM-twohead-resume200-v3/ops/h20-observe-twohead-a.py',run_name='__main__')
 v=ns['out'];rows=ns['rows']
 fields=['completed_step','effective_from_step','action','reason','old_lr','new_lr','changed','valid_observations','invalid_observations','action_sequence','cooldown_remaining']
 v['controller_latest']={k:rows[-1]['gan/d_lr_control'].get(k) for k in fields}

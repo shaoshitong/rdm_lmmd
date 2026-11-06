@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import sys
 
-REMOTE=Path('/data/shaoshitong/rdm-sets/visualizations/zimage-2step-1024-dino-qwenvl-mmd2-from0/qib-portraits-v1/native-ten-stages')
+REMOTE=Path('/data/rdm-workspace/rdm-sets/visualizations/zimage-2step-1024-dino-qwenvl-mmd2-from0/qib-portraits-v1/native-ten-stages')
 
 
 def remote(helper, code):

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX=twohead-lr10-native-four-columns
 exec >>"$ROOT/launch-logs/$PREFIX.log" 2>&1

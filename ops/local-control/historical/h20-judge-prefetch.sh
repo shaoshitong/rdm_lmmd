@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT=/share-evpfs/shaoshitong/rdm-sets
 source "$ROOT/control/env.sh"
-exec 9>/data/shaoshitong/rdm-run.lock
+exec 9>/data/rdm-workspace/rdm-run.lock
 flock -n 9 || { echo 'An existing task holds the experiment lock.'; exit 3; }
 test ! -e "$ROOT/control/judge-prefetch.exit" || { echo 'Prior prefetch exit exists; refusing automatic restart.'; exit 4; }
 on_exit() {

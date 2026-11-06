@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 RUN = ROOT/'zimage/work_dirs/zimage-2step-1024-dlr1e-5-spatial-patchgan-softplus'
 
 

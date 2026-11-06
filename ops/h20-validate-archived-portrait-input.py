@@ -4,7 +4,7 @@ import gc, json, os, pathlib, time, traceback
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
 from h20_portrait_checkpoint import archived_checkpoint, load_archived_state, validate_state
 
-ROOT = pathlib.Path('/data/shaoshitong/rdm-sets')
+ROOT = pathlib.Path('/data/rdm-workspace/rdm-sets')
 CONTROL = ROOT/'control'
 (ROOT/'.cache/tmp').mkdir(parents=True, exist_ok=True)
 os.environ['TMPDIR'] = str(ROOT/'.cache/tmp')

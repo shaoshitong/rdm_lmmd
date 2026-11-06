@@ -6,7 +6,7 @@ Never changes, starts, or restarts training; preserves PNGs, never checkpoint co
 import datetime, json, os, pathlib, subprocess, time
 from h20_portrait_checkpoint import archived_checkpoint
 
-ROOT = pathlib.Path('/data/shaoshitong/rdm-sets')
+ROOT = pathlib.Path('/data/rdm-workspace/rdm-sets')
 EXPERIMENT = ROOT/'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A'
 OUT = ROOT/'visualizations/twohead-lr10-A/qib-portraits-v1'
 REPO = pathlib.Path(__file__).resolve().parents[1]

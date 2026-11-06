@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CPU/Gloo integration only. Does not take the training lock or allocate GPUs.
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p "$ROOT/launch-logs" "$ROOT/control"
 exec >>"$ROOT/launch-logs/twohead-adaptive-validation.log" 2>&1

@@ -9,7 +9,7 @@ parameterized `../h20-recovery-ssh.py` is preserved separately.
 `historical/` preserves prior launch, download, relay, observation and plotting
 code originally kept outside Git. Several refer to the removed shared mount or
 superseded experiments; these files document those historical versions. Current
-training is `/data/shaoshitong/RDM-twohead-lr10-v1` at a25e4c4; its entry/config
+training is `/data/rdm-workspace/RDM-twohead-lr10-v1` at a25e4c4; its entry/config
 and exact scope are documented in `../H20-TWOHEAD-LR10.md`. Publication does not
 start or restart any job. `SOURCE-MAP.json` records original paths and SHA256.
 

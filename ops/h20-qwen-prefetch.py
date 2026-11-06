@@ -7,7 +7,7 @@ import time
 
 from huggingface_hub import HfApi, snapshot_download
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 api = HfApi()
 for repo, patterns, dest in [
     ('jiachengcui888/zimage-ref-v1', ['zimage-ref-v1/*'], ROOT / 'zimage'),

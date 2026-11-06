@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import torch
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 CONTROL=ROOT/'control/spatial-A-user-visualization'
 
 

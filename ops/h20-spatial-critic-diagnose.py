@@ -183,7 +183,7 @@ def weight_update_diagnostics(runtime, before, iterations):
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--root', type=Path, default=Path('/data/shaoshitong/rdm-sets'))
+    parser.add_argument('--root', type=Path, default=Path('/data/rdm-workspace/rdm-sets'))
     parser.add_argument('--config', default='z-image/configs/zimage_2step_1024_dlr1e-4_spatial_patchgan_h20_fa3.yaml')
     parser.add_argument('--reference-root', type=Path)
     parser.add_argument('--first-row', type=int, default=0)

@@ -4,7 +4,7 @@ import json, os, pathlib
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
 import torch
 torch.set_num_threads(1)
-root = pathlib.Path('/data/shaoshitong/rdm-sets')
+root = pathlib.Path('/data/rdm-workspace/rdm-sets')
 folder = root/'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A'
 proof = json.loads((root/'control/twohead-resume200-stop-verified.json').read_text())
 assert proof['passed'] and proof['classification'].startswith('intentional-user-authorized')

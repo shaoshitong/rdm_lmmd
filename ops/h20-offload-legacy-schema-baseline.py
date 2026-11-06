@@ -4,7 +4,7 @@
 Never touches the current model, resume checkpoint, optimizer, or training process.
 """
 import gc, hashlib, json, os, pathlib, time, traceback
-ROOT=pathlib.Path('/data/shaoshitong/rdm-sets')
+ROOT=pathlib.Path('/data/rdm-workspace/rdm-sets')
 CONTROL=ROOT/'control'
 SOURCE=CONTROL/'spatial-A-user-visualization/step_0000150-model.pth'
 DEST=pathlib.Path('/mnt/airs-business/shaoshitong/rdm-sets/checkpoints/legacy-spatial-A/step_0000150-model.pth')

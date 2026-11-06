@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
-ROOT=Path('/data/shaoshitong/rdm-sets/visualizations/spatial-A')
+ROOT=Path('/data/rdm-workspace/rdm-sets/visualizations/spatial-A')
 OUT=ROOT/'comparison-0-150-200'
 
 

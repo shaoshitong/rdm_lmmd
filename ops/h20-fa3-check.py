@@ -34,6 +34,6 @@ for length in (128, 257):
     results.append(row)
 record = {'backend': backend, 'kernel_revision': FA3_REVISION, 'device': torch.cuda.get_device_name(),
           'torch': torch.__version__, 'checks': results, 'passed': True}
-path = Path('/data/shaoshitong/rdm-sets/control/fa3-kernel-check.json')
+path = Path('/data/rdm-workspace/rdm-sets/control/fa3-kernel-check.json')
 path.write_text(json.dumps(record, indent=2))
 print(json.dumps(record), flush=True)

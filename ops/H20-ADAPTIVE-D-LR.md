@@ -66,7 +66,7 @@ must state `accept_generator_optimizer_reset:true`, `approved_utc` and the actua
       --expected-step 50 --old-launcher-pid OWNED_PID --approval-file ROOT/control/APPROVAL.json
     bash ops/h20-run-spatial-adaptive-a.sh FROZEN_CHECKPOINT 50
 
-`ROOT` in the example means `/data/shaoshitong/rdm-sets`. Both `load_from` and
+`ROOT` in the example means `/data/rdm-workspace/rdm-sets`. Both `load_from` and
 `resume_from` point at the same frozen file, never the mutable rolling filename.
 The entry appends from the saved cursor through the original total500, saves
 every50, retains stdout/stderr and real exit under `spatial-A-500-adaptive`,

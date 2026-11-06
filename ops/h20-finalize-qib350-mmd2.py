@@ -11,7 +11,7 @@ import sys
 import time
 import traceback
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 CONTROL=ROOT/'control'
 CODE=Path(__file__).resolve().parents[1]
 PREFIX='qib350-mmd2-finalization'
@@ -56,7 +56,7 @@ def main():
     global OWNS
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--training-source',type=Path,required=True);ap.add_argument('--training-sha',required=True)
     a=ap.parse_args()
-    assert a.training_source.is_relative_to('/data/shaoshitong')
+    assert a.training_source.is_relative_to('/data/rdm-workspace')
     assert (a.training_source/'SOURCE_COMMIT').read_text().strip()==a.training_sha
     lock=(CONTROL/(PREFIX+'.lock')).open('a');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
     assert not (CONTROL/(PREFIX+'-status.json')).exists(),'Inspect existing finalizer rather than duplicate'

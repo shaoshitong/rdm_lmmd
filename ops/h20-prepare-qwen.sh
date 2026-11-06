@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Data/environment preparation only: no experiment training and no evaluation.
 set -euo pipefail
-REPO=/data/shaoshitong/RDM-qwen
-ROOT=/data/shaoshitong/rdm-sets
+REPO=/data/rdm-workspace/RDM-qwen
+ROOT=/data/rdm-workspace/rdm-sets
 source "$REPO/ops/h20-data-env.sh"
 mkdir -p "$ROOT/control" "$ROOT/launch-logs" "$TMPDIR" "$PIP_CACHE_DIR" "$HF_HOME"
 exec 8>"$ROOT/control/prepare-qwen.lock"

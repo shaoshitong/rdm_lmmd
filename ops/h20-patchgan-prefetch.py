@@ -157,7 +157,7 @@ def download_weight(row, root, endpoint, old):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("/data/shaoshitong/rdm-sets"))
+    parser.add_argument("--root", type=Path, default=Path("/data/rdm-workspace/rdm-sets"))
     parser.add_argument("--endpoint", default="https://hf-mirror.com")
     args = parser.parse_args(argv)
     if platform.system() == "Darwin" or not args.root.is_absolute() or not args.root.is_dir():

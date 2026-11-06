@@ -3,7 +3,7 @@
 Run on the remote Linux node, using its existing HF/httpx environment:
 
 ```sh
-python ops/h20-qwen3vl-prefetch.py --root /data/shaoshitong/rdm-sets
+python ops/h20-qwen3vl-prefetch.py --root /data/rdm-workspace/rdm-sets
 ```
 
 The script pins `Qwen/Qwen3-VL-4B-Instruct` to

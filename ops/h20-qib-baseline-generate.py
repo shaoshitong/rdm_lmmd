@@ -10,7 +10,7 @@ import subprocess
 import sys
 import time
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 SOURCE = Path(__file__).resolve().parents[1]
 REVISION = 'f332072aa78be7aecdf3ee76d5c247082da564a6'
 SNAPSHOT = ROOT/'hf/hub/models--Tongyi-MAI--Z-Image-Turbo/snapshots'/REVISION

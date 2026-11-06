@@ -7,7 +7,7 @@ import datetime,json,math,os,pathlib,time
 os.environ['CUDA_VISIBLE_DEVICES']=''
 import torch
 from safetensors import safe_open
-ROOT=pathlib.Path('/data/shaoshitong/rdm-sets')
+ROOT=pathlib.Path('/data/rdm-workspace/rdm-sets')
 BASE=ROOT/'hf/hub/models--Tongyi-MAI--Z-Image-Turbo/snapshots/f332072aa78be7aecdf3ee76d5c247082da564a6/transformer'
 CKPT=ROOT/'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A/resume.pth'
 OUT=ROOT/'control/twohead-lr10-step50-global-delta'

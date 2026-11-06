@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 exec >>"$ROOT/launch-logs/spatial-A-model-update-audit.log" 2>&1
 trap 'rc=$?; trap - EXIT; printf "%s\n" "$rc" >"$ROOT/control/spatial-A-model-update-audit.exit"; exit "$rc"' EXIT

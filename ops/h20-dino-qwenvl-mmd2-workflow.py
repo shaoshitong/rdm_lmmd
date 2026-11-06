@@ -17,7 +17,7 @@ import sys
 import time
 import traceback
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 CODE=Path(__file__).resolve().parents[1]
 CONTROL=ROOT/'control'
 PREFIX='dino-qwenvl-mmd2-from0'
@@ -174,7 +174,7 @@ def main():
         if serialized!=last:status('waiting_evaluation_reference_storage',**evidence);last=serialized
         time.sleep(5)
     # The lock is acquired only after real evaluation completion, never stolen.
-    runlock=Path('/data/shaoshitong/rdm-run.lock').open('a')
+    runlock=Path('/data/rdm-workspace/rdm-run.lock').open('a')
     status('waiting_owned_run_lock',**evidence)
     fcntl.flock(runlock,fcntl.LOCK_EX)
     preflight()

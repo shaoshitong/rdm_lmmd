@@ -19,7 +19,7 @@ import sys
 import time
 
 CODE=Path(__file__).resolve().parents[1]
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 PACK=ROOT/'zimage/zimage-ref-v1'
 SOURCE=PACK/'reference_store_qwen'
 DEST=PACK/'reference_store_dino_qwenvl'

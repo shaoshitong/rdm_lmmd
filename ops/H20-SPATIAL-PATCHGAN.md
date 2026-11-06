@@ -43,7 +43,7 @@ buffers. Aggregator outputs are never cached.
 
 ## Data and source roles
 
-All large files and caches stay under `/data/shaoshitong/rdm-sets` on H20.
+All large files and caches stay under `/data/rdm-workspace/rdm-sets` on H20.
 The complete Qwen3-VL snapshot is pinned to
 `ebb281ec70b05090aa6165b016eac8ec08e71b17`. Teacher images are pinned to dataset
 revision `3195cc9e58d83dfe17a6b5d89f9886121872586f`: 87 retained tars,

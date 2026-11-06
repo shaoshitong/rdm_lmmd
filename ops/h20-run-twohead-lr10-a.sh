@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Formal A only:500 configured steps, original warmup/loss/save policy. No B/eval.
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONFIG=z-image/configs/zimage_2step_1024_twohead_glr10_h20_fa3.yaml
 RDM_MICRO_BATCH="${1:?Pass the measured selected microbatch}"
@@ -53,7 +53,7 @@ export TRANSFORMERS_OFFLINE=1
 export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 PYTHON="$ROOT/envs/rdm/bin/python"
 cd "$REPO"
-exec 9>/data/shaoshitong/rdm-run.lock
+exec 9>/data/rdm-workspace/rdm-run.lock
 flock -n 9 || { echo 'Another task owns the H20 run lock; no formal launch'; exit 3; }
 if [[ -f "$CONTROL/twohead-lr10-A-500.pid" ]]; then
   previous="$(cat "$CONTROL/twohead-lr10-A-500.pid")"
@@ -139,7 +139,7 @@ PY
 "$PYTHON" - "$REPO" "$CONFIG" "$RUN_DIR" "$CONTROL" <<'PY'
 import json,pathlib,sys,time,os
 repo,config,run,control = map(pathlib.Path,sys.argv[1:])
-root = pathlib.Path('/data/shaoshitong/rdm-sets')
+root = pathlib.Path('/data/rdm-workspace/rdm-sets')
 command=[str(root/'envs/rdm/bin/torchrun'),'--standalone','--nproc-per-node=2',
          '-m','zimage_distill.launch',str(config),'--set','memory.micro_batch='+os.environ['RDM_MICRO_BATCH']]
 receipt={'created_epoch':time.time(),'source':str(repo), 'source_commit':(repo/'SOURCE_COMMIT').read_text().strip(),

@@ -2,7 +2,7 @@
 
 Upstream base: `aad83a6fd557de3199ae0303811c9ad81e2fba12` (`zimage`).
 The previous checkout and experiment records remain separate. New large files live only at
-`/data/shaoshitong/rdm-sets` on H20. Original physical GPUs4/5 are the only authorized GPUs.
+`/data/rdm-workspace/rdm-sets` on H20. Original physical GPUs4/5 are the only authorized GPUs.
 
 ## Data
 
@@ -47,7 +47,7 @@ inside these disposable benchmarks. No checkpoint, W&B run, or evaluation is cre
 benchmark driver. Only small JSON timings/loss/memory receipts are saved. The formal A/B
 experiments are not started. GPU occupancy, locks and exit status are checked explicitly.
 
-Logs and completion receipts: `/data/shaoshitong/rdm-sets/launch-logs/` and `control/`.
+Logs and completion receipts: `/data/rdm-workspace/rdm-sets/launch-logs/` and `control/`.
 
 ## Pinned kernel compatibility
 

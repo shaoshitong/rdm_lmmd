@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 BASE=ROOT/'visualizations/zimage-2step-1024-dino-qwenvl-mmd2-from0/qib-portraits-v1/native-ten-stages'
 
 

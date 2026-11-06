@@ -22,7 +22,7 @@ manifest=dict(source_commit=sha,repository='shaoshitong/rdm_lmmd',branch='main',
 receipt=dict(repository='shaoshitong/rdm_lmmd',branch='main',local_commit=sha,remote_commit=remote,files_verified=len(files),code_docs_backup=str(backup),verified_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),no_weights_or_environment=True)
 (BASE/'outputs/h20-local-code-docs-backup.json').write_text(json.dumps(receipt,indent=2)+'\n')
 if len(sys.argv)>1:
- dest=sys.argv[1];assert dest.startswith('/data/shaoshitong/RDM-')
+ dest=sys.argv[1];assert dest.startswith(('/data/rdm-workspace/RDM-', '/data/shaoshitong/RDM-'))
  payload=base64.b64encode(git('archive','--format=tar.gz',sha)).decode()
  script='''import base64,hashlib,io,json,pathlib,tarfile,os
 D=pathlib.Path(DEST);assert not D.exists();D.mkdir()

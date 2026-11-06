@@ -409,7 +409,7 @@ def finalize(work, output, source, array, contract, receipts):
 def main(argv=None):
     global FAILURE_DIR
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--root', type=Path, default=Path('/data/shaoshitong/rdm-sets'))
+    parser.add_argument('--root', type=Path, default=Path('/data/rdm-workspace/rdm-sets'))
     parser.add_argument('--dataset-revision', required=True, help='immutable official40-hex dataset commit')
     parser.add_argument('--endpoint', default='https://hf-mirror.com', help='payload transport only')
     parser.add_argument('--batch', type=int, default=8)

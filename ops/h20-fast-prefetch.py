@@ -11,7 +11,7 @@ from pathlib import Path
 import httpx
 import huggingface_hub as hf
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 parser = argparse.ArgumentParser()
 parser.add_argument('--repo', help='Prefetch one independent repo without waiting for another repo lock')
 args = parser.parse_args()

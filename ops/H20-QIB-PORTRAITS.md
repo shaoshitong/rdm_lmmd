@@ -30,7 +30,7 @@ For each remaining stage it waits for spareGPU6 headroom and loads that step's r
 archive, even if training has advanced. It records true exit and actual image receipts.
 Failure stops this helper without touching training.
 
-Remote artifacts: `/data/shaoshitong/rdm-sets/visualizations/twohead-lr10-A/qib-portraits-v1`.
+Remote artifacts: `/data/rdm-workspace/rdm-sets/visualizations/twohead-lr10-A/qib-portraits-v1`.
 Logs and true exits: `launch-logs/twohead-qib-portraits-*.log`,
 `control/twohead-qib-portraits-*.exit`. Each comparison page is2048px wide;
 each source tile remains1024x1024 and is pixel-compared after PNG save/readback.

@@ -10,8 +10,8 @@ import subprocess
 import sys
 import time
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
-SOURCE = Path('/data/shaoshitong/RDM-twohead-resume200-v3')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
+SOURCE = Path('/data/rdm-workspace/RDM-twohead-resume200-v3')
 EXPECTED = '6428309c6fd2af6b1e1588428b44545524ee5d066c07bdaf1fdcb5dc87bb663b'
 
 

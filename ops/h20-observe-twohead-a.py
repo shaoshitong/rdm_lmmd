@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Read-only one-shot observer for the bound two-head A run; no Torch/GPU kernels."""
 import pathlib,json,subprocess,datetime,math,os
-root=pathlib.Path('/data/shaoshitong/rdm-sets');control=root/'control'
+root=pathlib.Path('/data/rdm-workspace/rdm-sets');control=root/'control'
 prefix=os.environ.get('H20_CONTROL_PREFIX','twohead-lr10-A-500')
-source=pathlib.Path(os.environ.get('H20_TRAIN_SOURCE','/data/shaoshitong/RDM-twohead-lr10-v1'))
+source=pathlib.Path(os.environ.get('H20_TRAIN_SOURCE','/data/rdm-workspace/RDM-twohead-lr10-v1'))
 exp=root/'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A'
 def read(p):
  return p.read_text().strip() if p.exists() else None

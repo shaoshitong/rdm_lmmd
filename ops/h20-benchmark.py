@@ -23,10 +23,10 @@ ap.add_argument('--backend', default='native', choices=['native', '_flash_3_varl
 ap.add_argument('--iterations', type=int, default=3)
 ap.add_argument('--checkpoint-group-size', type=int, choices=[0, 1, 2], default=1,
                 help='0 disables DiT checkpointing; VAE checkpointing remains on')
-ap.add_argument('--out-dir', type=Path, default=Path('/data/shaoshitong/rdm-sets/control'))
+ap.add_argument('--out-dir', type=Path, default=Path('/data/rdm-workspace/rdm-sets/control'))
 ap.add_argument('--probe-refresh', action='store_true')
 ap.add_argument('--config', default='z-image/configs/zimage_2step_1024_dlr1e-4_qwen.yaml')
-ap.add_argument('--reference-root', default='/data/shaoshitong/rdm-sets/zimage/zimage-ref-v1/reference_store_qwen')
+ap.add_argument('--reference-root', default='/data/rdm-workspace/rdm-sets/zimage/zimage-ref-v1/reference_store_qwen')
 a = ap.parse_args()
 rank, world, local_rank = setup_distributed()
 assert world == 2 and 32 % (world * a.micro_batch) == 0

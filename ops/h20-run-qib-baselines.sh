@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX=qib-turbo2-turbo9-gpu67
 mkdir -p "$ROOT/control" "$ROOT/launch-logs"

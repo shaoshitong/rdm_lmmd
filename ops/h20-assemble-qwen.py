@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from zimage_distill.qwen_text_store import BUILT, LINKED, link_source, rows_read, stats_rows
 
-root = Path('/data/shaoshitong/rdm-sets')
+root = Path('/data/rdm-workspace/rdm-sets')
 pack = root / 'zimage/zimage-ref-v1'
 source = pack / 'reference_store'
 download = root / 'zimage/qwen-text-download'

@@ -2,7 +2,7 @@
 # Page-spec acceptance only. No formal500-step A/B, checkpoints, W&B or evaluation.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 source "$REPO/ops/h20-data-env.sh"
 source "$ROOT/env.sh"
 export PYTHONPATH="$REPO/z-image:$REPO:${PYTHONPATH:-}"
@@ -32,7 +32,7 @@ CUDA_VISIBLE_DEVICES="" "$PYTHON" -m pytest -q tests/test_qwen3_vl_spatial.py \
   z-image/tests/test_checkpoint_groups.py z-image/tests/test_qwen_text_store.py
 CUDA_VISIBLE_DEVICES="" "$ROOT/envs/rdm/bin/torchrun" --standalone --nproc-per-node=2 \
   ops/h20-spatial-distributed-parity.py --json "$ROOT/control/patchgan-distributed-parity.json"
-exec 9>/data/shaoshitong/rdm-run.lock
+exec 9>/data/rdm-workspace/rdm-run.lock
 flock -n 9 || exit 3
 check_idle() {
   "$PYTHON" - <<'PY'

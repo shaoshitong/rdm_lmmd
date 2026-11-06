@@ -12,9 +12,9 @@ import subprocess
 import sys
 import time
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 CODE=Path(__file__).resolve().parents[1]
-TRAIN=Path('/data/shaoshitong/RDM-dino-qwenvl-mmd2-v7')
+TRAIN=Path('/data/rdm-workspace/RDM-dino-qwenvl-mmd2-v7')
 TRAIN_SHA='ad5dddc428a32591fedf9b034bf5f1639ced0514'
 EXPERIMENT='zimage-2step-1024-dino-qwenvl-mmd2-from0'
 ARCHIVE=Path('/mnt/airs-business/shaoshitong/rdm-sets/checkpoints')/EXPERIMENT

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Latest softplus/D1e-5 checks, followed immediately by formal A500; no B/eval.
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO/ops/h20-data-env.sh"
 source "$ROOT/env.sh"
@@ -15,7 +15,7 @@ trap 'rc=$?; trap - EXIT; printf "%s\n" "$rc" >"$ROOT/control/spatial-A-prefligh
 echo "$$" >"$ROOT/control/spatial-A-preflight.pid"
 printf 'source=%s\nmode=latest softplus D1e-5 G2.83e-6, then formal500\n' "$REPO"
 cd "$REPO"
-exec 9>/data/shaoshitong/rdm-run.lock
+exec 9>/data/rdm-workspace/rdm-run.lock
 flock -n 9 || exit 3
 CUDA_VISIBLE_DEVICES="" "$PYTHON" -m pytest -q tests/test_qwen3_vl_spatial.py tests/test_reference_images.py \
   tests/test_pixel_grad_caching.py tests/test_spatial_cache.py tests/test_spatial_configs.py \

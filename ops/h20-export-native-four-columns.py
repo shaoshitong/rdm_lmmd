@@ -3,7 +3,7 @@
 import datetime, hashlib, json, os, pathlib
 from PIL import Image, ImageDraw, ImageFont, ImageChops
 
-ROOT = pathlib.Path('/data/shaoshitong/rdm-sets')
+ROOT = pathlib.Path('/data/rdm-workspace/rdm-sets')
 BASE0 = ROOT/'visualizations/spatial-A/step_0000000'
 STEP50 = ROOT/'visualizations/twohead-lr10-A/step_0000050'
 STEP100 = ROOT/'visualizations/twohead-lr10-A/training-prompts-100-v1'

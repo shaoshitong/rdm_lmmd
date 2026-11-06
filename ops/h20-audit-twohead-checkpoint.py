@@ -10,8 +10,8 @@ from pathlib import Path
 import sys
 import time
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
-TRAIN_SOURCE = Path(os.environ.get('H20_TRAIN_SOURCE','/data/shaoshitong/RDM-twohead-lr10-v1'))
+ROOT = Path('/data/rdm-workspace/rdm-sets')
+TRAIN_SOURCE = Path(os.environ.get('H20_TRAIN_SOURCE','/data/rdm-workspace/RDM-twohead-lr10-v1'))
 TRAIN_SHA = os.environ.get('H20_TRAIN_SHA','a25e4c42794b13d5c881d3f1994944929b019190')
 EXP = ROOT/'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A'
 HEADS = ['dinov3_l', 'qwen3vl_4b']

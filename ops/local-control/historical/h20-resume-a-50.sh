@@ -4,8 +4,8 @@ set -euo pipefail
 MODE=${1:---preflight}
 [[ "$MODE" == --preflight || "$MODE" == --run ]] || exit 2
 ROOT=/share-evpfs/shaoshitong/rdm-sets
-REPO=/data/shaoshitong/RDM
-CONTROL=/data/shaoshitong/rdm-control
+REPO=/data/rdm-workspace/RDM
+CONTROL=/data/rdm-workspace/rdm-control
 ATTEMPT="$CONTROL/A-recovery-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 mkdir -p "$ATTEMPT"
 exec >>"$ATTEMPT/controller.log" 2>&1
@@ -21,7 +21,7 @@ trap on_exit EXIT
 printf '%s\n' "$$" > "$ATTEMPT/pid"
 date -u +%FT%TZ > "$ATTEMPT/started"
 printf 'MODE=%s ATTEMPT=%s\n' "$MODE" "$ATTEMPT"
-exec 9>"/data/shaoshitong/rdm-run.lock"
+exec 9>"/data/rdm-workspace/rdm-run.lock"
 flock -n 9 || { echo 'Existing experiment holds the run lock'; exit 3; }
 test -d "$ROOT" || { echo "STORAGE_UNAVAILABLE: $ROOT is absent or inaccessible"; exit 20; }
 # Reject a bare directory exposed on the full system disk after an unmount.

@@ -7,22 +7,22 @@ import json
 from pathlib import Path
 import sys
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 CONTROL=ROOT/'control'
 EXP=ROOT/'zimage/work_dirs/zimage-2step-1024-dino-qwenvl-mmd2-from0'
 PREFIX='dino-qwenvl-mmd2-from0'
 # This reader itself is supplied on stdin from a later, published code-only tree.
 # Import its small contract module from the cold visualization deployment, never hot-edit SOURCE.
-CONTRACT=Path('/data/shaoshitong/RDM-dino-qwenvl-mmd2-v8/ops/h20-mmd2-loss-data.py')
+CONTRACT=Path('/data/rdm-workspace/RDM-dino-qwenvl-mmd2-v8/ops/h20-mmd2-loss-data.py')
 spec=importlib.util.spec_from_file_location('mmd2_loss_contract',CONTRACT)
 contract=importlib.util.module_from_spec(spec);spec.loader.exec_module(contract)
 command_path=CONTROL/(PREFIX+'-formal.command.json')
 if not command_path.exists():
     print(json.dumps(dict(status='not_started',rows=[],experiment=EXP.name,utc=datetime.datetime.now(datetime.timezone.utc).isoformat())))
     raise SystemExit(0)
-command=json.loads(command_path.read_text());preflight=json.loads((CONTROL/(PREFIX+'-preflight.json')).read_text())
+command=json.loads(command_path.read_text().replace('/data/shaoshitong/', '/data/rdm-workspace/'));preflight=json.loads((CONTROL/(PREFIX+'-preflight.json')).read_text())
 SOURCE=Path(command['source']).resolve()
-assert SOURCE.is_relative_to('/data/shaoshitong') and SOURCE.name.startswith('RDM-dino-qwenvl-mmd2-v')
+assert SOURCE.is_relative_to('/data/rdm-workspace') and SOURCE.name.startswith('RDM-dino-qwenvl-mmd2-v')
 SHA=command['source_commit']
 assert command['source']==str(SOURCE) and command['source_commit']==SHA and command['CUDA_VISIBLE_DEVICES']=='4,5'
 assert (SOURCE/'SOURCE_COMMIT').read_text().strip()==SHA

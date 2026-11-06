@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 GPU="$1"
 [[ "$GPU" == 6 || "$GPU" == 7 ]]
@@ -13,10 +13,10 @@ if [[ -f "$ROOT/control/$PREFIX.pid" ]]; then
   if kill -0 "$previous" 2>/dev/null; then echo 'Comparison already active'; exit 4; fi
 fi
 printf '%s\n' "$$" >"$ROOT/control/$PREFIX.pid"
-source /data/shaoshitong/RDM-twohead-lr10-v1/ops/h20-data-env.sh
+source /data/rdm-workspace/RDM-twohead-lr10-v1/ops/h20-data-env.sh
 source "$ROOT/env.sh"
 export CUDA_VISIBLE_DEVICES="$GPU" OMP_NUM_THREADS=2 PYTHONUNBUFFERED=1
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-export PYTHONPATH=/data/shaoshitong/RDM-twohead-lr10-v1/z-image:/data/shaoshitong/RDM-twohead-lr10-v1
-cd /data/shaoshitong/RDM-twohead-lr10-v1
+export PYTHONPATH=/data/rdm-workspace/RDM-twohead-lr10-v1/z-image:/data/rdm-workspace/RDM-twohead-lr10-v1
+cd /data/rdm-workspace/RDM-twohead-lr10-v1
 timeout --signal=TERM --kill-after=30s 1800s "$ROOT/envs/rdm/bin/python" "$REPO/ops/h20-compare-four-stages150.py" --gpu "$GPU"

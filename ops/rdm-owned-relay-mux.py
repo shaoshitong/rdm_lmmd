@@ -45,7 +45,7 @@ import sys
 import uuid
 
 GOAL = "01a19c31-f2fb-70c0-bf90-dbae201d2479"
-CONTROL = Path("/data/shaoshitong/rdm-sets/control")
+CONTROL = Path("/data/rdm-workspace/rdm-sets/control")
 OWNED = CONTROL / "relay-owned.json"
 ENDPOINT = "127.0.0.1:18791"
 

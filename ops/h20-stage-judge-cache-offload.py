@@ -17,7 +17,7 @@ import sys
 import time
 import traceback
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 CONTROL=ROOT/'control'
 PREFIX='dino-qwenvl-mmd2-judge-cache-offload'
 NAME='model-00001-of-00002.safetensors'

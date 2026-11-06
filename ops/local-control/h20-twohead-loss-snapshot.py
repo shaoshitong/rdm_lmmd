@@ -9,7 +9,7 @@ import json
 import os
 import runpy
 
-SOURCE = '/data/shaoshitong/RDM-twohead-resume200-v3'
+SOURCE = '/data/rdm-workspace/RDM-twohead-resume200-v3'
 COMMIT = '1e06bf49569b4ee7847a417bc1ff1445bb8ba51b'
 INITIAL = 'a25e4c42794b13d5c881d3f1994944929b019190'
 os.environ.update(H20_CONTROL_PREFIX='twohead-lr10-resume200-500-v3',

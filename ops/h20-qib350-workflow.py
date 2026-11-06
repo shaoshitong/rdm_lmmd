@@ -11,9 +11,9 @@ import sys
 import threading
 import time
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 CODE = Path(__file__).resolve().parents[1]
-TRAIN = Path('/data/shaoshitong/RDM-twohead-resume200-v3')
+TRAIN = Path('/data/rdm-workspace/RDM-twohead-resume200-v3')
 RUN = ROOT/'qib/runs/twohead-lr10-A-s350-zh-v1'
 CONTROL = ROOT/'control'
 PYTHON = ROOT/'envs/rdm/bin/python'

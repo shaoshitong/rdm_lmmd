@@ -9,7 +9,7 @@ unchanged. No-grad bootstrap/refresh and checkpoint-disabled paths retain indivi
 The adapter is for eager training, rejects ControlNet residual indexing and makes no compile
 compatibility claim. VAE checkpointing remains enabled throughout these tests.
 
-The isolated source is installed at `/data/shaoshitong/RDM-qwen-perf`; it imports the existing
+The isolated source is installed at `/data/rdm-workspace/RDM-qwen-perf`; it imports the existing
 pinned training environment and cached assets without changing the earlier source checkout.
 The launcher waits for the original micro2 validation to exit successfully and for GPUs to be
 idle, then holds the task run lock. It runs CPU parity tests and a tiny real two-rank FSDP
@@ -29,7 +29,7 @@ any tested configuration provides that margin. NVML peaks are polled separately 
 allocated/reserved peaks. OOM bounds are empirical; a short gate does not prove every future
 sequence/allocator pattern will fit. Formal training remains off pending the user's changes.
 
-Status: `/data/shaoshitong/rdm-sets/control/checkpoint-sweep-latest.json`.
+Status: `/data/rdm-workspace/rdm-sets/control/checkpoint-sweep-latest.json`.
 Per-case logs/results: directory named by its `output` field. Entry: `ops/h20-run-checkpoint-sweep.sh`.
 
 The initial external guard was retired after it misidentified a relative-path controller

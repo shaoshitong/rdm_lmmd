@@ -2,9 +2,9 @@
 """User-authorized one-time handoff after actual current-run step200 save."""
 import datetime, json, os, pathlib, signal, subprocess, time
 
-ROOT = pathlib.Path('/data/shaoshitong/rdm-sets')
+ROOT = pathlib.Path('/data/rdm-workspace/rdm-sets')
 PREFIX = 'twohead-lr10-A-500'
-EXPECTED = '/data/shaoshitong/RDM-twohead-lr10-v1'
+EXPECTED = '/data/rdm-workspace/RDM-twohead-lr10-v1'
 PID = 1677394
 
 
@@ -31,7 +31,7 @@ def main():
         assert not exitp.exists(), 'Training exited before authorized handoff'
         time.sleep(2)
     command = [str(ROOT/'envs/rdm/bin/python'),
-        '/data/shaoshitong/RDM-twohead-readonly-audit-v2/ops/h20-audit-twohead-checkpoint.py', '--step', '200']
+        '/data/rdm-workspace/RDM-twohead-readonly-audit-v2/ops/h20-audit-twohead-checkpoint.py', '--step', '200']
     result = subprocess.run(command, text=True, capture_output=True, timeout=120,
         env=dict(os.environ, CUDA_VISIBLE_DEVICES='', OMP_NUM_THREADS='1'))
     assert result.returncode == 0, result.stderr[-1500:]+result.stdout[-1500:]

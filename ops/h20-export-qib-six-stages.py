@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 BASE = ROOT/'visualizations/twohead-lr10-A/qib-portraits-v1'
 OUT = BASE/'native-0-200-250-300-350-400'
 STEPS = [0, 200, 250, 300, 350, 400]

@@ -6,7 +6,7 @@ from pathlib import Path
 import runpy
 import sys
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 
 
 def main():

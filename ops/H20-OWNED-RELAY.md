@@ -2,7 +2,7 @@
 
 `rdm-owned-relay-mux.py` is the preserved task-owned supervisor, with its remote
 ownership record moved from the removed `/share-evpfs` filesystem to
-`/data/shaoshitong/rdm-sets/control`. The local STATE and flock paths remain the
+`/data/rdm-workspace/rdm-sets/control`. The local STATE and flock paths remain the
 original `2026-11-01/ben-d/work` paths consumed by `h20-recovery-ssh.py`.
 
 If the ownership file disappeared, cleanup only releases an already terminated

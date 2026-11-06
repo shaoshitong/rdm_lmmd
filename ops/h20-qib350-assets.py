@@ -12,7 +12,7 @@ import time
 import httpx
 import huggingface_hub as hf
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 QIB = ROOT/'qib'
 CONTROL = ROOT/'control'
 REPO = 'Qwen/Qwen-Image-Bench'

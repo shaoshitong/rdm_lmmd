@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT=/share-evpfs/shaoshitong/rdm-sets
-REPO=/data/shaoshitong/RDM
+REPO=/data/rdm-workspace/RDM
 SETTING="${1:?Expected setting B}"
 [[ $# -eq 1 ]] || { printf '%s\n' 'Expected exactly one argument: B' >&2; exit 2; }
 case "$SETTING" in
@@ -11,7 +11,7 @@ esac
 source "$ROOT/control/env.sh"
 export HF_HUB_OFFLINE=1
 export HF_HUB_DISABLE_XET=1
-exec 9>/data/shaoshitong/rdm-run.lock
+exec 9>/data/rdm-workspace/rdm-run.lock
 flock -n 9 || { printf '%s\n' 'Another experiment controller holds the run lock.' >&2; exit 3; }
 test ! -e "$ROOT/control/$SETTING.exit" || {
   printf '%s\n' 'This setting has already exited; refusing an automatic restart.' >&2

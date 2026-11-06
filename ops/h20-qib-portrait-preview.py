@@ -5,8 +5,8 @@ Runs only on an explicitly selected spare GPU; never changes training or saves w
 """
 import argparse, datetime, fcntl, gc, hashlib, json, os, pathlib, subprocess, sys, time
 
-ROOT = pathlib.Path('/data/shaoshitong/rdm-sets')
-SOURCE = pathlib.Path(os.environ.get('H20_TRAIN_SOURCE','/data/shaoshitong/RDM-twohead-lr10-v1'))
+ROOT = pathlib.Path('/data/rdm-workspace/rdm-sets')
+SOURCE = pathlib.Path(os.environ.get('H20_TRAIN_SOURCE','/data/rdm-workspace/RDM-twohead-lr10-v1'))
 TRAIN_SHA = os.environ.get('H20_TRAIN_SHA','a25e4c42794b13d5c881d3f1994944929b019190')
 EXPERIMENT = ROOT/'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A'
 OUT = ROOT/'visualizations/twohead-lr10-A/qib-portraits-v1'

@@ -2,8 +2,8 @@
 # One manually authorized continuation of the reported preparation failure.
 set -euo pipefail
 ROOT=/share-evpfs/shaoshitong/rdm-sets
-REPO=/data/shaoshitong/RDM
-SOCKET=/data/shaoshitong/rdm-tmux.sock
+REPO=/data/rdm-workspace/RDM
+SOCKET=/data/rdm-workspace/rdm-tmux.sock
 exec 8>"$ROOT/control/A-continuation.lock"
 flock -n 8 || { echo 'Another A continuation owns the claim.'; exit 3; }
 test ! -e "$ROOT/control/A-continuation.exit" || { echo 'A prior continuation already exited.'; exit 4; }
@@ -49,7 +49,7 @@ while true; do
   printf 'UTC=%s WAITING_FOR_GPU4_5\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   sleep 30
 done
-exec 7>/data/shaoshitong/rdm-run.lock
+exec 7>/data/rdm-workspace/rdm-run.lock
 flock -w 30 7
 ARCHIVE="$ROOT/control/history/A-preparation-$(date -u '+%Y%m%dT%H%M%SZ')"
 mkdir -p "$ARCHIVE"

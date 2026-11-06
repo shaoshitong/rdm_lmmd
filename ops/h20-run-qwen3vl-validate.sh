@@ -2,7 +2,7 @@
 # Complete preparation and bounded acceptance only. Never start formal A/B or eval.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 source "$REPO/ops/h20-data-env.sh"
 source "$ROOT/env.sh"
 export PYTHONPATH="$REPO/z-image:$REPO:${PYTHONPATH:-}"
@@ -28,7 +28,7 @@ export RDM_QWEN3VL_ATTN_IMPLEMENTATION=sdpa
 cd "$REPO"
 CUDA_VISIBLE_DEVICES="" "$PYTHON" -m pytest -q tests/test_qwen3_vl_backbone.py \
   tests/test_panel_split.py tests/test_representation.py z-image/tests/test_qwen3vl_reference_builder.py
-exec 9>/data/shaoshitong/rdm-run.lock
+exec 9>/data/rdm-workspace/rdm-run.lock
 flock -n 9 || exit 3
 "$PYTHON" - <<'PY'
 import subprocess

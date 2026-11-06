@@ -9,7 +9,7 @@ def main():
     ap.add_argument('--out', required=True)
     ap.add_argument('--sha256', required=True)
     a = ap.parse_args()
-    allowed = '/data/shaoshitong/rdm-sets/visualizations/twohead-lr10-A/'
+    allowed = '/data/rdm-workspace/rdm-sets/visualizations/twohead-lr10-A/'
     path = pathlib.PurePosixPath(a.remote)
     assert a.remote.startswith(allowed) and '..' not in path.parts and path.suffix in ('.png', '.jpg', '.json')
     assert re.fullmatch('[0-9a-f]{64}', a.sha256)

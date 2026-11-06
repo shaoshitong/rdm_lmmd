@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX=mmd2-complex-ten-stages
 mkdir -p "$ROOT/control" "$ROOT/launch-logs"

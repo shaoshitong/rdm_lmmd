@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 import time
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 CONTROL=ROOT/'control'
 PREFIX='dino-qwenvl-mmd2-from0'
 EXP=ROOT/'zimage/work_dirs/zimage-2step-1024-dino-qwenvl-mmd2-from0'
@@ -147,7 +147,7 @@ def audit(source,source_sha):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--training-source',type=Path,required=True);p.add_argument('--training-sha',required=True)
-    args=p.parse_args();assert args.training_source.is_relative_to('/data/shaoshitong')
+    args=p.parse_args();assert args.training_source.is_relative_to('/data/rdm-workspace')
     os.environ['CUDA_VISIBLE_DEVICES']='';os.environ['TMPDIR']=str(ROOT/'.cache/tmp')
     import sys
     sys.path[:0]=[str(args.training_source),str(args.training_source/'z-image')]

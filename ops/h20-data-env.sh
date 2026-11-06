@@ -1,4 +1,4 @@
-export RDM_ROOT=/data/shaoshitong/rdm-sets
+export RDM_ROOT=/data/rdm-workspace/rdm-sets
 export PATH="$RDM_ROOT/miniconda/bin:$PATH"
 export CONDA_ENVS_PATH="$RDM_ROOT/envs"
 export CONDA_PKGS_DIRS="$RDM_ROOT/.cache/conda-pkgs"

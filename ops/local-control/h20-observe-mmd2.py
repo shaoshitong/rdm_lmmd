@@ -10,14 +10,14 @@ from pathlib import Path
 import shutil
 import subprocess
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 C=ROOT/'control'
 PREFIX='dino-qwenvl-mmd2-from0'
 EXP=ROOT/'zimage/work_dirs/zimage-2step-1024-dino-qwenvl-mmd2-from0'
 
 
 def read(path):
-    return json.loads(path.read_text()) if path.exists() else None
+    return json.loads(path.read_text().replace('/data/shaoshitong/', '/data/rdm-workspace/')) if path.exists() else None
 
 
 def live(pid):

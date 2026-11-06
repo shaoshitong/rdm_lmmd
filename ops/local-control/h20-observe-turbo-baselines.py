@@ -8,7 +8,7 @@ import shutil
 import struct
 import subprocess
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 CONTROL = ROOT/'control'
 PREFIX = 'qib-turbo2-turbo9-gpu67'
 

@@ -8,7 +8,7 @@ import shutil
 import struct
 import subprocess
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 RUN = ROOT/'qib/runs/twohead-lr10-A-s350-zh-v1'
 CONTROL = ROOT/'control'
 

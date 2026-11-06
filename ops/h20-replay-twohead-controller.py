@@ -9,9 +9,9 @@ import os
 from pathlib import Path
 import sys
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
-SOURCE = Path('/data/shaoshitong/RDM-twohead-resume200-v3')
-INITIAL = Path('/data/shaoshitong/RDM-twohead-lr10-v1')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
+SOURCE = Path('/data/rdm-workspace/RDM-twohead-resume200-v3')
+INITIAL = Path('/data/rdm-workspace/RDM-twohead-lr10-v1')
 SHA = '1e06bf49569b4ee7847a417bc1ff1445bb8ba51b'
 PREFIX = 'twohead-lr10-resume200-500-v3'
 HEADS = ['dinov3_l', 'qwen3vl_4b']

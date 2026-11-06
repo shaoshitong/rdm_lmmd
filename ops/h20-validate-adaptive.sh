@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CPU/Gloo only. May run alongside A; never starts/stops a GPU job.
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p "$ROOT/launch-logs" "$ROOT/control"
 exec >>"$ROOT/launch-logs/spatial-adaptive-validation.log" 2>&1

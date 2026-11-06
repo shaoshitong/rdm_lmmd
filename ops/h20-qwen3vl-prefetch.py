@@ -325,7 +325,7 @@ class CacheProgress:
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("/data/shaoshitong/rdm-sets"))
+    parser.add_argument("--root", type=Path, default=Path("/data/rdm-workspace/rdm-sets"))
     parser.add_argument("--endpoint", default="https://hf-mirror.com",
                         help="Payload transport only; metadata always uses official HF")
     parser.add_argument("--transport", choices=("hf", "aria2"), default="hf",

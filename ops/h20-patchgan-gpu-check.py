@@ -40,7 +40,7 @@ def require(value, message):
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("/data/shaoshitong/rdm-sets"))
+    parser.add_argument("--root", type=Path, default=Path("/data/rdm-workspace/rdm-sets"))
     parser.add_argument("--qwen-snapshot", type=Path)
     parser.add_argument("--qwen-receipt", type=Path)
     parser.add_argument("--dino-checkpoint", type=Path)

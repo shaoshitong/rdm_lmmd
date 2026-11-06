@@ -7,8 +7,8 @@ The teacher's nine-step image has its own dataset seed, explicitly recorded.
 """
 import argparse, datetime, fcntl, hashlib, json, os, pathlib, subprocess, sys, time
 
-ROOT = pathlib.Path('/data/shaoshitong/rdm-sets')
-SOURCE = pathlib.Path('/data/shaoshitong/RDM-twohead-lr10-v1')
+ROOT = pathlib.Path('/data/rdm-workspace/rdm-sets')
+SOURCE = pathlib.Path('/data/rdm-workspace/RDM-twohead-lr10-v1')
 SHA = 'a25e4c42794b13d5c881d3f1994944929b019190'
 EXPERIMENT = ROOT / 'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A'
 CKPT = EXPERIMENT / 'resume.pth'

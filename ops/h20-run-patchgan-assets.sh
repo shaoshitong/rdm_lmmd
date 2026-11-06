@@ -3,7 +3,7 @@
 set -euo pipefail
 MODE="${1:?model or images}"; shift
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 source "$REPO/ops/h20-data-env.sh"
 source "$ROOT/env.sh"
 export PYTHONPATH="$REPO/z-image:$REPO:${PYTHONPATH:-}"

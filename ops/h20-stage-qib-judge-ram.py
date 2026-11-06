@@ -11,9 +11,9 @@ from pathlib import Path
 import shutil
 import time
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 REVISION = '1b77ff83564ac4e4e8140769eacff7ff73f35f3c'
-DEST = Path('/dev/shm')/('shaoshitong-qib-judge-'+REVISION)
+DEST = Path('/dev/shm')/('rdm-qib-judge-'+REVISION)
 NAME = 'model-00001-of-00002.safetensors'
 SIZE = 49825162976
 SHA = 'cd93ba04b9dad1af628ecffdcdce16554621cae6ef6f00334c2baf28316aff3e'

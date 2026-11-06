@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 PREFIX="${H20_PORTRAIT_FOLLOW_PREFIX:-twohead-qib-portraits-follow}"
 mkdir -p "$ROOT/control" "$ROOT/launch-logs"

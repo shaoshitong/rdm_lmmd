@@ -1,6 +1,6 @@
 # Read-only verification of the running two-head A experiment
 
-The active training checkout remains /data/shaoshitong/RDM-twohead-lr10-v1,
+The active training checkout remains /data/rdm-workspace/RDM-twohead-lr10-v1,
 commit a25e4c42794b13d5c881d3f1994944929b019190. This branch adds operational
 readers only. Do not deploy it over the active checkout or restart training.
 

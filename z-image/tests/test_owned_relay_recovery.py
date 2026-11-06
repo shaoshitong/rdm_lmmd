@@ -166,7 +166,7 @@ def test_owned_term_requires_two_matching_claim_and_identity_checks_and_audit(re
     result = remote.run()
     assert result["status"] == "term_sent"
     assert result["reason"] == "registered_owned_orphan_only"
-    assert result["audit_path"].startswith("/data/shaoshitong/rdm-sets/control/relay-owned-repair-")
+    assert result["audit_path"].startswith("/data/rdm-workspace/rdm-sets/control/relay-owned-repair-")
     assert remote.ns["read_claim"].call_count == 2
     assert remote.ns["identity"].call_count == 2
     remote.ns["os"].pidfd_open.assert_called_once_with(CLAIM["remote_pid"])
@@ -223,4 +223,4 @@ def test_state_lock_and_remote_control_keep_intended_paths():
         node.targets[0].id: node.value for node in REMOTE.body
         if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
     }
-    assert ast.literal_eval(remote_assignments["CONTROL"].args[0]) == "/data/shaoshitong/rdm-sets/control"
+    assert ast.literal_eval(remote_assignments["CONTROL"].args[0]) == "/data/rdm-workspace/rdm-sets/control"

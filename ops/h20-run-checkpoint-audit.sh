@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CPU-only audit runner. Detach this wrapper through the existing owned SSH helper.
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 STEP="${1:?Usage: h20-run-checkpoint-audit.sh STEP [auditor options]}"
 shift
@@ -31,7 +31,7 @@ trap on_signal TERM INT HUP
 export CUDA_VISIBLE_DEVICES='' OMP_NUM_THREADS=1 PYTHONUNBUFFERED=1
 export TMPDIR="$ROOT/.cache/tmp"
 export H20_CONTROL_PREFIX=twohead-lr10-resume200-500-v3
-export H20_TRAIN_SOURCE=/data/shaoshitong/RDM-twohead-resume200-v3
+export H20_TRAIN_SOURCE=/data/rdm-workspace/RDM-twohead-resume200-v3
 export H20_TRAIN_SHA=1e06bf49569b4ee7847a417bc1ff1445bb8ba51b
 PYTHON="$ROOT/envs/rdm/bin/python"
 "$PYTHON" - "$REPO" "$RUN" "$STEP" "$@" <<'PY'

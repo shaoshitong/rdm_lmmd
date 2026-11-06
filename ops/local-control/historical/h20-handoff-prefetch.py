@@ -13,7 +13,7 @@ import time
 
 ROOT = Path('/share-evpfs/shaoshitong/rdm-sets')
 CONTROL = ROOT / 'control'
-SOCKET = '/data/shaoshitong/rdm-tmux.sock'
+SOCKET = '/data/rdm-workspace/rdm-tmux.sock'
 PARTIAL = ROOT / 'qib/judge/model-00001-of-00002.safetensors.curl-part'
 
 

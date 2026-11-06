@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Explicitly authorized isolated checks, not the formal A/B experiments.
 set -euo pipefail
-REPO=/data/shaoshitong/RDM-qwen
-ROOT=/data/shaoshitong/rdm-sets
+REPO=/data/rdm-workspace/RDM-qwen
+ROOT=/data/rdm-workspace/rdm-sets
 source "$REPO/ops/h20-data-env.sh"
 exec >>"$ROOT/launch-logs/validate-optimization.log" 2>&1
 on_exit() {
@@ -30,7 +30,7 @@ conda run -n rdm --no-capture-output python ops/h20-assemble-qwen.py
 conda run -n rdm --no-capture-output python -m pytest \
   z-image/tests/test_zimage_multistep.py z-image/tests/test_qwen_text_store.py -q
 conda run -n rdm --no-capture-output python -m pip install 'kernels==0.12.0'
-exec 9>/data/shaoshitong/rdm-run.lock
+exec 9>/data/rdm-workspace/rdm-run.lock
 flock -n 9 || { echo 'Another experiment holds the run lock'; exit 22; }
 python3 - <<'PY'
 import subprocess

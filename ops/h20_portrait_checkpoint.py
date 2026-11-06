@@ -5,7 +5,7 @@ import io
 from pathlib import Path
 import re
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 ARCHIVE = Path('/mnt/airs-business/shaoshitong/rdm-sets/checkpoints/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A')
 HEADS = ['s1/dinov3_l', 's1/qwen3vl_4b', 's2/dinov3_l', 's2/qwen3vl_4b']
 

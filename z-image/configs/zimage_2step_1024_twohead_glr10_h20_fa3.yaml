@@ -36,9 +36,9 @@ student:
 
 # built by /data/ironman/jiacheng/RDM/z-image/process (launch.py all). The contexts and renders sit
 # in the root above reference_store/: move or copy the WHOLE root, then REFERENCE_ROOT=<root>/reference_store
-reference_root: /data/shaoshitong/rdm-sets/zimage/zimage-ref-v1/reference_store_qwen
+reference_root: /data/rdm-workspace/rdm-sets/zimage/zimage-ref-v1/reference_store_qwen
 qwen_text_repo: jiachengcui888/zimage-ref-qwen-text   # retain the original global Qwen text view
-output_dir: /data/shaoshitong/rdm-sets/zimage/work_dirs
+output_dir: /data/rdm-workspace/rdm-sets/zimage/work_dirs
 encoders: [dinov3_l, siglip2, aimv2_huge]
 joint: true
 
@@ -111,8 +111,8 @@ resume_every: 50
 spatial_gan:
   enabled: true
   global_gan_encoders: []          # GAN only DINOv3 + Qwen-VL; AIM stays in MMD
-  qwen_snapshot: /data/shaoshitong/rdm-sets/models/qwen3vl-4b-patchgan/ebb281ec70b05090aa6165b016eac8ec08e71b17
-  reference_images: /data/shaoshitong/rdm-sets/zimage/zimage-ref-v1/reference_images_patchgan
+  qwen_snapshot: /data/rdm-workspace/rdm-sets/models/qwen3vl-4b-patchgan/ebb281ec70b05090aa6165b016eac8ec08e71b17
+  reference_images: /data/rdm-workspace/rdm-sets/zimage/zimage-ref-v1/reference_images_patchgan_object_v1
   real_cache_rows: 128
   heads: 8
 

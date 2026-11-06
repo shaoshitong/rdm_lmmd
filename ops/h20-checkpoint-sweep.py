@@ -11,7 +11,7 @@ import subprocess
 import time
 from h20_benchmark_acceptance import validate_benchmark_record, is_expected_cuda_oom, wait_for_idle_gpus
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 parser = argparse.ArgumentParser()
 parser.add_argument('--resume-summary', type=Path)
 parser.add_argument('--only-case', type=int, nargs=2, metavar=('GROUP', 'MICRO'))

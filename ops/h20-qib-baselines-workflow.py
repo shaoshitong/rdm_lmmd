@@ -14,11 +14,11 @@ import sys
 import time
 
 CODE = Path(__file__).resolve().parents[1]
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 CONTROL = ROOT/'control'
 PREFIX = 'qib-turbo2-turbo9-gpu67'
 REVISION = 'f332072aa78be7aecdf3ee76d5c247082da564a6'
-JUDGE_MODEL = Path('/dev/shm/shaoshitong-qib-judge-1b77ff83564ac4e4e8140769eacff7ff73f35f3c')
+JUDGE_MODEL = Path('/dev/shm/rdm-qib-judge-1b77ff83564ac4e4e8140769eacff7ff73f35f3c')
 
 
 def module(name, path):

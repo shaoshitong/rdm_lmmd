@@ -9,7 +9,7 @@ import io
 import json
 from pathlib import Path
 
-ROOT=Path('/data/shaoshitong/rdm-sets/visualizations/zimage-2step-1024-dino-qwenvl-mmd2-from0/complex-cases-v1')
+ROOT=Path('/data/rdm-workspace/rdm-sets/visualizations/zimage-2step-1024-dino-qwenvl-mmd2-from0/complex-cases-v1')
 spec=importlib.util.spec_from_file_location('complex_fetch',Path(__file__).with_name('h20-fetch-mmd2-complex-pages.py'))
 client=importlib.util.module_from_spec(spec);spec.loader.exec_module(client)
 

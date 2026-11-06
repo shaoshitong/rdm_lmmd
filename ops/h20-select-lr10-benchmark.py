@@ -7,7 +7,7 @@ import sys
 
 from h20_benchmark_acceptance import validate_benchmark_record
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 REPO=Path(__file__).resolve().parents[1]
 CONFIG=REPO/'z-image/configs/zimage_2step_1024_twohead_glr10_h20_fa3.yaml'
 HEADS=['dinov3_l','qwen3vl_4b']

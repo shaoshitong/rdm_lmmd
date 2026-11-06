@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Actual step50 preview; bounded VRAM, unchanged trainer and published sampler."""
 import argparse,datetime,fcntl,json,os,pathlib,runpy,subprocess,sys,time
-ROOT=pathlib.Path('/data/shaoshitong/rdm-sets')
-SOURCE=pathlib.Path('/data/shaoshitong/RDM-twohead-lr10-v1')
+ROOT=pathlib.Path('/data/rdm-workspace/rdm-sets')
+SOURCE=pathlib.Path('/data/rdm-workspace/RDM-twohead-lr10-v1')
 CKPT=ROOT/'zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A/resume.pth'
 OUT=ROOT/'visualizations/twohead-lr10-A/step_0000050'
 def main():

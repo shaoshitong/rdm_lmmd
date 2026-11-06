@@ -36,8 +36,8 @@ student:
 
 # built by /data/ironman/jiacheng/RDM/z-image/process (launch.py all). The contexts and renders sit
 # in the root above reference_store/: move or copy the WHOLE root, then REFERENCE_ROOT=<root>/reference_store
-reference_root: /data/shaoshitong/rdm-sets/zimage/zimage-ref-v1/reference_store_qwen3vl
-output_dir: /data/shaoshitong/rdm-sets/zimage/work_dirs
+reference_root: /data/rdm-workspace/rdm-sets/zimage/zimage-ref-v1/reference_store_qwen3vl
+output_dir: /data/rdm-workspace/rdm-sets/zimage/work_dirs
 encoders: [dinov3_l, qwen3vl_4b, aimv2_huge]
 joint: true
 

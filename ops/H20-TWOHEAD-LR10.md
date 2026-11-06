@@ -50,6 +50,6 @@ rolling inode before adding the final student, avoiding the extra simultaneous
 disk requirement while retaining all old experiment artifacts. Completion still
 requires both actual step500 payloads and the true clean exit.
 
-`ROOT` means `/data/shaoshitong/rdm-sets`. Verify at least one full real formal
+`ROOT` means `/data/rdm-workspace/rdm-sets`. Verify at least one full real formal
 iteration and a second real observation after launching; the full goal remains
 active until actual500 artifacts and clean exit are audited.

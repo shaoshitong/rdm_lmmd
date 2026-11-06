@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 exec >>"$ROOT/launch-logs/twohead-lr10-validation.log" 2>&1
 trap 'rc=$?; trap - EXIT; printf "%s\n" "$rc" >"$ROOT/control/twohead-lr10-validation.exit"; exit "$rc"' EXIT
@@ -26,7 +26,7 @@ rc=$?
 printf '%s\n' "$rc" >"$ROOT/control/twohead-lr10-cpu.exit"
 set -e
 test "$rc" = 0
-exec 9>/data/shaoshitong/rdm-run.lock
+exec 9>/data/rdm-workspace/rdm-run.lock
 flock -n 9
 export CUDA_VISIBLE_DEVICES=4,5 TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 "$ROOT/envs/rdm/bin/python" ops/h20-select-lr10-benchmark.py

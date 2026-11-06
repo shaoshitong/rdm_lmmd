@@ -39,7 +39,7 @@ memory allows it, and falls back only for explicit CUDA OOM. Every command, log,
 actual exit and peak memory is retained. Completed Batch inference iterations
 prove judge progress; task queue counts and loading messages do not.
 
-Results are under `/data/shaoshitong/rdm-sets/qib/runs/twohead-lr10-A-s350-zh-v1`.
+Results are under `/data/rdm-workspace/rdm-sets/qib/runs/twohead-lr10-A-s350-zh-v1`.
 The top log/exit are `launch-logs/qib350-two-gpu.log` and
 `control/qib350-two-gpu.exit`. Completion requires1000 exact expected ID PNGs,
 all4105 official dimension calls represented by all8 completed parts, merged

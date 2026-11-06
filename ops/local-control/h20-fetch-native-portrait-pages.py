@@ -29,7 +29,7 @@ def main():
     assert source['actual_exit'] == 0 and proof['passed']
     assert proof['native_tile_pixel_equality_verified']
     assert step in [150, 200, 250, 300, 350, 400, 450, 500]
-    remote_root = Path('/data/shaoshitong/rdm-sets/visualizations/twohead-lr10-A/qib-portraits-v1')
+    remote_root = Path('/data/rdm-workspace/rdm-sets/visualizations/twohead-lr10-A/qib-portraits-v1')
     pages = proof['native_comparisons']
     expected_names = {f'portrait-0-{step}-seed{seed}-page{page}.png'
                       for seed in (0, 1) for page in (1, 2)}

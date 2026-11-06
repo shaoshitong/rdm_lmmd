@@ -36,7 +36,7 @@ def emit(event, **value):
 
 def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("/data/shaoshitong/rdm-sets"))
+    parser.add_argument("--root", type=Path, default=Path("/data/rdm-workspace/rdm-sets"))
     parser.add_argument("--output", type=Path, help="New index directory; never a shared feature directory")
     parser.add_argument("--endpoint", default="https://hf-mirror.com")
     parser.add_argument("--download-workers", type=int, choices=(1, 2), default=2)

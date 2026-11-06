@@ -11,7 +11,7 @@ from pathlib import Path
 import signal
 import time
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 STATE = ROOT / 'control/checkpoint-sweep-latest.json'
 while not STATE.exists():
     time.sleep(1)

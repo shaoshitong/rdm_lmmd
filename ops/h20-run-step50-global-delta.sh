@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 exec >>"$ROOT/launch-logs/twohead-lr10-step50-global-delta.log" 2>&1
 trap 'rc=$?; trap - EXIT; printf "%s\n" "$rc" >"$ROOT/control/twohead-lr10-step50-global-delta.exit"; exit "$rc"' EXIT

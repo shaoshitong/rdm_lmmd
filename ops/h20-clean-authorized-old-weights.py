@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import shutil
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 OLD = 'zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A'
 ACTIVE = 'zimage-2step-1024-dino-qwenvl-mmd2-from0'
 ARCHIVE = Path('/mnt/airs-business/shaoshitong/rdm-sets/checkpoints')

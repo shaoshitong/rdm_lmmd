@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 STEP="$1"
 GPU="$2"
@@ -16,7 +16,7 @@ if [[ -f "$ROOT/control/$PREFIX.pid" ]]; then
   if kill -0 "$previous" 2>/dev/null; then echo 'Portrait preview already active'; exit 4; fi
 fi
 printf '%s\n' "$$" >"$ROOT/control/$PREFIX.pid"
-TRAIN_SOURCE="${H20_TRAIN_SOURCE:-/data/shaoshitong/RDM-twohead-lr10-v1}"
+TRAIN_SOURCE="${H20_TRAIN_SOURCE:-/data/rdm-workspace/RDM-twohead-lr10-v1}"
 source "$TRAIN_SOURCE/ops/h20-data-env.sh"
 source "$ROOT/env.sh"
 export CUDA_VISIBLE_DEVICES="$GPU" OMP_NUM_THREADS=2 PYTHONUNBUFFERED=1

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG=z-image/configs/zimage_2step_1024_twohead_glr10_h20_fa3.yaml
 EXP="$ROOT/zimage/work_dirs/zimage-2step-1024-glr2p83e-5-twohead-softplus-adaptive-A"
@@ -37,7 +37,7 @@ export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 export PYTHONPATH="$REPO/z-image:$REPO"
 PYTHON="$ROOT/envs/rdm/bin/python"
 cd "$REPO"
-exec 9>/data/shaoshitong/rdm-run.lock
+exec 9>/data/rdm-workspace/rdm-run.lock
 flock -n 9 || { echo 'Training lock is held; no duplicate resume'; exit 3; }
 if [[ -f "$ROOT/control/$PREFIX.pid" ]]; then
   prior="$(cat "$ROOT/control/$PREFIX.pid")"
@@ -51,7 +51,7 @@ OWNS_LATEST=1
 "$PYTHON" - "$REPO" "$EXP" "$ARCHIVE" "$ARCHIVE_CONTROL" "$PREFIX" <<'PY'
 import pathlib,json,os,sys,time,hashlib,yaml,subprocess
 repo,exp,archive,archive_control=map(pathlib.Path,sys.argv[1:5]);prefix=sys.argv[5]
-root=pathlib.Path('/data/shaoshitong/rdm-sets');control=root/'control'
+root=pathlib.Path('/data/rdm-workspace/rdm-sets');control=root/'control'
 stop=json.loads((control/'twohead-resume200-stop-verified.json').read_text())
 assert stop['passed'] and stop['classification']=='intentional-user-authorized-handoff-not-training-failure'
 old_process=pathlib.Path('/proc/1677394/cmdline')
@@ -64,7 +64,7 @@ assert cfg['steps']==500 and cfg['resume_every']==50 and cfg['save_resume']
 assert cfg['lr']==2.83e-5 and cfg['gan']['lr']==1e-5 and cfg['gan']['loss']=='ns'
 assert cfg['memory']['micro_batch']==2 and cfg['memory']['optimizer']=='adamw8bit'
 assert cfg['encoders']==['dinov3_l','siglip2','aimv2_huge'] and cfg['spatial_gan']['global_gan_encoders']==[]
-old=pathlib.Path('/data/shaoshitong/RDM-twohead-lr10-v1')
+old=pathlib.Path('/data/rdm-workspace/RDM-twohead-lr10-v1')
 for subtree in ['rdm','z-image/zimage_distill']:
  for p in (old/subtree).rglob('*.py'):
   relative=p.relative_to(old)

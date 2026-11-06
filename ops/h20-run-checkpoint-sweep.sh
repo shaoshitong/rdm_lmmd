@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 source "$REPO/ops/h20-data-env.sh"
 source "$ROOT/env.sh"
 export PYTHONPATH="$REPO/z-image:$REPO:${PYTHONPATH:-}"
@@ -14,7 +14,7 @@ trap on_exit EXIT
 echo "$$" > "$ROOT/control/checkpoint-sweep.pid"
 while [[ ! -f "$ROOT/control/validate-optimization.exit" ]]; do sleep 10; done
 test "$(cat "$ROOT/control/validate-optimization.exit")" = 0
-exec 9>/data/shaoshitong/rdm-run.lock
+exec 9>/data/rdm-workspace/rdm-run.lock
 flock -n 9 || exit 3
 python3 - <<'PY'
 import subprocess

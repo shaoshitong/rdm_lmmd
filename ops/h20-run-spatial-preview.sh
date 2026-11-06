@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-ROOT=/data/shaoshitong/rdm-sets
+ROOT=/data/rdm-workspace/rdm-sets
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STEP="${1:?checkpoint step}"; GPU="${2:?physical preview GPU}"
 [[ "$STEP" == 0 || "$STEP" == 150 || "$STEP" == 200 ]]

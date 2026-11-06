@@ -17,7 +17,7 @@ import time
 import torch
 from safetensors import safe_open
 
-ROOT = Path('/data/shaoshitong/rdm-sets')
+ROOT = Path('/data/rdm-workspace/rdm-sets')
 CONTROL = ROOT/'control'
 OUT = CONTROL/'spatial-A-model-update-audit'
 BASE = ROOT/'hf/hub/models--Tongyi-MAI--Z-Image-Turbo/snapshots/f332072aa78be7aecdf3ee76d5c247082da564a6/transformer'

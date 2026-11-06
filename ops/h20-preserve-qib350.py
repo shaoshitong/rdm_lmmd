@@ -15,7 +15,7 @@ import re
 import tarfile
 import time
 
-ROOT=Path('/data/shaoshitong/rdm-sets')
+ROOT=Path('/data/rdm-workspace/rdm-sets')
 CONTROL=ROOT/'control'
 RUN=ROOT/'qib/runs/twohead-lr10-A-s350-zh-v1'
 DEST=Path('/mnt/airs-business/shaoshitong/rdm-sets/evaluations')/(RUN.name+'.tar.gz')

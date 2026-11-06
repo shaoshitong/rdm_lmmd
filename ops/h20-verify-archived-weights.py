@@ -2,7 +2,7 @@
 """Independently read full final-named milestone objects; CPU-only, no model hooks."""
 import hashlib, json, os, pathlib, time, traceback
 
-ROOT = pathlib.Path('/data/shaoshitong/rdm-sets')
+ROOT = pathlib.Path('/data/rdm-workspace/rdm-sets')
 CONTROL = ROOT/'control/twohead-retain50-archive'
 
 
