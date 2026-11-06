@@ -46,7 +46,10 @@ def checkpoint(step):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--gpu',type=int,choices=[6,7],required=True)
+    parser.add_argument('--allow-legacy-simple-cases',action='store_true')
     args=parser.parse_args()
+    if not args.allow_legacy_simple_cases:
+        raise SystemExit('Simple legacy cases require explicit opt-in. Default: ops/h20-run-mmd2-complex-preview.sh')
     assert os.environ['CUDA_VISIBLE_DEVICES']==str(args.gpu)
     assert (TRAIN/'SOURCE_COMMIT').read_text().strip()==TRAIN_SHA
     BASE.mkdir(parents=True,exist_ok=True)
